@@ -2,14 +2,15 @@
 DePINed BOT
 
 - Register Here : [DePINed](https://app.depined.org/onboarding)
-- Use Code : rWSNJoETWJkx
+- Use Code `rWSNJoETWJkx`
 
 ## Features
 
   - Auto Get Account Information
-  - Auto Run With [Monosans](https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/all.txt) Proxy - Choose 1
-  - Auto Run With Private Proxy - Choose 2
-  - Auto Run Without Proxy - Choose 3
+  - Auto Run With [Monosans](https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/all.txt) Proxy - `Choose 1`
+  - Auto Run With Private Proxy - `Choose 2`
+  - Auto Run Without Proxy - `Choose 3`
+  - Auto Rotate Invalid Proxies - `y` or `n`
   - Auto Send Ping Every 90 seconds
   - Multi Accounts With Threads
 
@@ -35,8 +36,8 @@ DePINed BOT
 ## Configuration
 
 - **accounts.json:** You will find the file `accounts.json` inside the project directory. Make sure `accounts.json` contains data that matches the format expected by the script. Here are examples of file formats:
-  ```bash
-  [
+  ```json
+    [
       {
           "Email": "your_email_address 1",
           "Password": "your_password 1"
@@ -45,7 +46,7 @@ DePINed BOT
           "Email": "your_email_address 2",
           "Password": "your_password 2"
       }
-  ]
+    ]
   ```
 
 - **proxy.txt:** You will find the file `proxy.txt` inside the project directory. Make sure `proxy.txt` contains data that matches the format expected by the script. Here are examples of file formats:
