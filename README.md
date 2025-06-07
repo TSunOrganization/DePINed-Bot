@@ -7,7 +7,7 @@ DePINed BOT
 ## Features
 
   - Auto Get Account Information
-  - Auto Run With [Monosans](https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/all.txt) Proxy - `Choose 1`
+  - Auto Run With [Free Proxyscrape](https://proxyscrape.com/free-proxy-list) Proxy - `Choose 1`
   - Auto Run With Private Proxy - `Choose 2`
   - Auto Run Without Proxy - `Choose 3`
   - Auto Rotate Invalid Proxies - `y` or `n`
@@ -38,14 +38,14 @@ DePINed BOT
 - **accounts.json:** You will find the file `accounts.json` inside the project directory. Make sure `accounts.json` contains data that matches the format expected by the script. Here are examples of file formats:
   ```json
     [
-      {
-          "Email": "your_email_address 1",
-          "Password": "your_password 1"
-      },
-      {
-          "Email": "your_email_address 2",
-          "Password": "your_password 2"
-      }
+        {
+            "Email": "your_email_address_1",
+            "Password": "your_password_1"
+        },
+        {
+            "Email": "your_email_address_2",
+            "Password": "your_password_2"
+        }
     ]
   ```
 
