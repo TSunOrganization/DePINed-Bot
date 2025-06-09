@@ -190,7 +190,9 @@ class DePINed:
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            return self.print_message(email, proxy, Fore.RED, f"Login Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+            self.print_message(email, proxy, Fore.RED, f"Login Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+
+        return None
 
     async def user_epoch_earning(self, email: str, use_proxy: bool, rotate_proxy: bool, proxy=None, retries=5):
         url = f"{self.BASE_API}/stats/epoch-earnings"
@@ -211,7 +213,9 @@ class DePINed:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-                return self.print_message(email, proxy, Fore.RED, f"GET Earning Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+                self.print_message(email, proxy, Fore.RED, f"GET Earning Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+
+        return None
             
     async def user_send_ping(self, email: str, use_proxy: bool, rotate_proxy: bool, proxy=None, retries=5):
         url = f"{self.BASE_API}/user/widget-connect"
@@ -234,7 +238,9 @@ class DePINed:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-                return self.print_message(email, proxy, Fore.RED, f"PING Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+                self.print_message(email, proxy, Fore.RED, f"PING Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+
+        return None
             
     async def process_user_login(self, email: str, use_proxy: bool, rotate_proxy: bool):
         while True:
