@@ -2,7 +2,7 @@
 DePINed BOT
 
 - Register Here : [DePINed](https://app.depined.org/onboarding)
-- Use Code `DEq2Es2FMNJxHO`
+- Use Code `DEInRb51YgfYaq`
 
 ## Features
 
