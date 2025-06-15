@@ -9,20 +9,24 @@ wib = pytz.timezone('Asia/Jakarta')
 class DePINed:
     def __init__(self) -> None:
         self.headers = {
-            "Accept": "*/*",
+            "Accept": "application/json, text/plain, */*",
             "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
-            "Origin": "chrome-extension://pjlappmodaidbdjhmhifbnnmmkkicjoc",
+            "Referer": "https://app.depined.org",
+            "Origin": "https://app.depined.org/",
             "Sec-Fetch-Dest": "empty",
             "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "none",
-            "User-Agent": FakeUserAgent().random,
-            "X-Requested-With": "XMLHttpRequest"
+            "Sec-Fetch-Site": "same-site",
+            "User-Agent": FakeUserAgent().random
         }
         self.BASE_API = "https://api.depined.org/api"
+        self.PAGE_URL = "https://app.depined.org"
+        self.SITE_KEY = "6LeOzGArAAAAAKB3KZBFGzBZXzQdEzGVRzliVlLu"
+        self.CAPTCHA_KEY = None
         self.proxies = []
         self.proxy_index = 0
         self.account_proxies = {}
-        self.access_tokens = {}
+        self.captcha_tokens = {}
+        self.password = {}
 
     def clear_terminal(self):
         os.system('cls' if os.name == 'nt' else 'clear')
@@ -37,7 +41,7 @@ class DePINed:
     def welcome(self):
         print(
             f"""
-        {Fore.GREEN + Style.BRIGHT}Auto Ping {Fore.BLUE + Style.BRIGHT}DePINed - BOT
+        {Fore.GREEN + Style.BRIGHT}Auto Setup {Fore.BLUE + Style.BRIGHT}DePINed - BOT
             """
             f"""
         {Fore.GREEN + Style.BRIGHT}Rey? {Fore.YELLOW + Style.BRIGHT}<INI WATERMARK>
@@ -50,7 +54,7 @@ class DePINed:
         return f"{int(hours):02}:{int(minutes):02}:{int(seconds):02}"
     
     def load_accounts(self):
-        filename = "tokens.json"
+        filename = "accounts.json"
         try:
             if not os.path.exists(filename):
                 self.log(f"{Fore.RED}File {filename} Not Found.{Style.RESET_ALL}")
@@ -63,7 +67,38 @@ class DePINed:
                 return []
         except json.JSONDecodeError:
             return []
-    
+        
+    def save_tokens(self, new_accounts):
+        filename = "tokens.json"
+        try:
+            if os.path.exists(filename) and os.path.getsize(filename) > 0:
+                with open(filename, 'r') as file:
+                    existing_accounts = json.load(file)
+            else:
+                existing_accounts = []
+
+            account_dict = {acc["Email"]: acc for acc in existing_accounts}
+
+            for new_acc in new_accounts:
+                account_dict[new_acc["Email"]] = new_acc
+
+            updated_accounts = list(account_dict.values())
+
+            with open(filename, 'w') as file:
+                json.dump(updated_accounts, file, indent=4)
+
+        except Exception as e:
+            return []
+        
+    def load_2captcha_key(self):
+        try:
+            with open("2captcha_key.txt", 'r') as file:
+                captcha_key = file.read().strip()
+
+            return captcha_key
+        except Exception as e:
+            return None
+
     async def load_proxies(self, use_proxy_choice: int):
         filename = "proxy.txt"
         try:
@@ -100,41 +135,28 @@ class DePINed:
             return proxies
         return f"http://{proxies}"
 
-    def get_next_proxy_for_account(self, account):
-        if account not in self.account_proxies:
+    def get_next_proxy_for_account(self, user_id):
+        if user_id not in self.account_proxies:
             if not self.proxies:
                 return None
             proxy = self.check_proxy_schemes(self.proxies[self.proxy_index])
-            self.account_proxies[account] = proxy
+            self.account_proxies[user_id] = proxy
             self.proxy_index = (self.proxy_index + 1) % len(self.proxies)
-        return self.account_proxies[account]
+        return self.account_proxies[user_id]
 
-    def rotate_proxy_for_account(self, account):
+    def rotate_proxy_for_account(self, user_id):
         if not self.proxies:
             return None
         proxy = self.check_proxy_schemes(self.proxies[self.proxy_index])
-        self.account_proxies[account] = proxy
+        self.account_proxies[user_id] = proxy
         self.proxy_index = (self.proxy_index + 1) % len(self.proxies)
         return proxy
     
     def mask_account(self, account):
-        if "@" in account:
+        if '@' in account:
             local, domain = account.split('@', 1)
-            hide_local = local[:3] + '*' * 3 + local[-3:]
-            return f"{hide_local}@{domain}"
-
-    def print_message(self, email, proxy, color, message):
-        self.log(
-            f"{Fore.CYAN + Style.BRIGHT}[ Account:{Style.RESET_ALL}"
-            f"{Fore.WHITE + Style.BRIGHT} {self.mask_account(email)} {Style.RESET_ALL}"
-            f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-            f"{Fore.CYAN + Style.BRIGHT} Proxy: {Style.RESET_ALL}"
-            f"{Fore.WHITE + Style.BRIGHT}{proxy}{Style.RESET_ALL}"
-            f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
-            f"{Fore.CYAN + Style.BRIGHT}Status:{Style.RESET_ALL}"
-            f"{color + Style.BRIGHT} {message} {Style.RESET_ALL}"
-            f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
-        )
+            mask_account = local[:3] + '*' * 3 + local[-3:]
+            return f"{mask_account}@{domain}"
 
     def print_question(self):
         while True:
@@ -169,40 +191,74 @@ class DePINed:
 
         return choose, rotate
     
-    async def check_connection(self, email: str, proxy=None):
+    async def check_connection(self, proxy=None):
         url = "https://api.ipify.org?format=json"
         try:
             response = await asyncio.to_thread(requests.get, url=url, proxy=proxy, timeout=60, impersonate="chrome110", verify=False)
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            self.print_message(email, proxy, Fore.RED, f"Connection Not 200 OK: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+            self.log(
+                f"{Fore.CYAN + Style.BRIGHT}Error  :{Style.RESET_ALL}"
+                f"{Fore.RED + Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
+            )
             return None
-
-    async def user_epoch_earning(self, email: str, proxy=None, retries=5):
-        url = f"{self.BASE_API}/stats/epoch-earnings"
-        headers = {
-            **self.headers,
-            "Authorization": f"Bearer {self.access_tokens[email]}"
-        }
+    
+    async def solve_cf_turnstile(self, email: str, proxy=None, retries=5):
         for attempt in range(retries):
             try:
-                response = await asyncio.to_thread(requests.get, url=url, headers=headers, proxy=proxy, timeout=60, impersonate="chrome110", verify=False)
+                if self.CAPTCHA_KEY is None:
+                    return None
+                
+                url = f"http://2captcha.com/in.php?key={self.CAPTCHA_KEY}&method=userrecaptcha&googlekey={self.SITE_KEY}&pageurl={self.PAGE_URL}&json=1"
+                response = await asyncio.to_thread(requests.get, url=url, proxy=proxy, timeout=60, impersonate="chrome110", verify=False)
                 response.raise_for_status()
-                return response.json()
+                result = response.json()
+
+                if result.get("status") != 1:
+                    await asyncio.sleep(5)
+                    continue
+
+                request_id = result.get("request")
+
+                self.log(
+                    f"{Fore.MAGENTA + Style.BRIGHT}    >{Style.RESET_ALL}"
+                    f"{Fore.BLUE + Style.BRIGHT} Req Id: {Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT}{request_id}{Style.RESET_ALL}"
+                )
+
+                for _ in range(30):
+                    res_url = f"http://2captcha.com/res.php?key={self.CAPTCHA_KEY}&action=get&id={request_id}&json=1"
+                    res_response = await asyncio.to_thread(requests.get, url=res_url, proxy=proxy, timeout=60, impersonate="chrome110", verify=False)
+                    res_response.raise_for_status()
+                    res_result = res_response.json()
+
+                    if res_result.get("status") == 1:
+                        captcha_token = res_result.get("request")
+                        self.captcha_tokens[email] = captcha_token
+                        return True
+                    elif res_result.get("request") == "CAPCHA_NOT_READY":
+                        self.log(
+                            f"{Fore.MAGENTA + Style.BRIGHT}    >{Style.RESET_ALL}"
+                            f"{Fore.BLUE + Style.BRIGHT} Status: {Style.RESET_ALL}"
+                            f"{Fore.YELLOW + Style.BRIGHT}Captcha Not Ready{Style.RESET_ALL}"
+                        )
+                        await asyncio.sleep(5)
+                        continue
+                    else:
+                        break
+
             except Exception as e:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-                self.print_message(email, proxy, Fore.RED, f"GET Earning Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+                return None
 
-        return None
-            
-    async def user_send_ping(self, email: str, proxy=None, retries=5):
-        url = f"{self.BASE_API}/user/widget-connect"
-        data = json.dumps({"connected":True})
+    async def user_login(self, email: str, proxy=None, retries=5):
+        url = f"{self.BASE_API}/user/login"
+        data = json.dumps({"email":email, "password":self.password[email], "g-recaptcha":self.captcha_tokens[email]})
         headers = {
-            "Authorization": f"Bearer {self.access_tokens[email]}",
+            **self.headers,
             "Content-Length": str(len(data)),
             "Content-Type": "application/json"
         }
@@ -215,16 +271,25 @@ class DePINed:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-                self.print_message(email, proxy, Fore.RED, f"PING Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+                self.log(
+                    f"{Fore.CYAN+Style.BRIGHT}Status :{Style.RESET_ALL}"
+                    f"{Fore.RED+Style.BRIGHT} Login Failed {Style.RESET_ALL}"
+                    f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
+                    f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
+                )
 
         return None
-            
+    
     async def process_check_connection(self, email: str, use_proxy: bool, rotate_proxy: bool):
         while True:
             proxy = self.get_next_proxy_for_account(email) if use_proxy else None
 
-            is_valid = await self.check_connection(email, proxy)
+            is_valid = await self.check_connection(proxy)
             if is_valid:
+                self.log(
+                    f"{Fore.CYAN + Style.BRIGHT}Proxy  :{Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT} {proxy} {Style.RESET_ALL}"
+                )
                 return True
             
             if rotate_proxy:
@@ -232,63 +297,50 @@ class DePINed:
 
             await asyncio.sleep(5)
             continue
-            
-    async def process_user_earning(self, email: str, use_proxy: bool):
-        while True:
-            proxy = self.get_next_proxy_for_account(email) if use_proxy else None
-
-            earning = await self.user_epoch_earning(email, proxy)
-            if earning and earning.get("code") == 200:
-                epoch = earning.get("data", {}).get("epoch", "N/A")
-                balance = earning.get("data", {}).get("earnings", 0)
-
-                self.print_message(email, proxy, Fore.WHITE, f"Epoch {epoch} "
-                    f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                    f"{Fore.CYAN + Style.BRIGHT} Earning: {Style.RESET_ALL}"
-                    f"{Fore.WHITE + Style.BRIGHT}{balance:.2f} PTS{Style.RESET_ALL}"
-                )
-
-            await asyncio.sleep(15 * 60)
-            
-    async def process_send_ping(self, email: str, use_proxy: bool):
-        while True:
-            proxy = self.get_next_proxy_for_account(email) if use_proxy else None
-
-            print(
-                f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
-                f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                f"{Fore.BLUE + Style.BRIGHT}Try to Sent Ping...{Style.RESET_ALL}",
-                end="\r",
-                flush=True
-            )
-
-            ping = await self.user_send_ping(email, proxy)
-            if ping and ping.get("message") == "Widget connection status updated":
-                self.print_message(email, proxy, Fore.GREEN, "PING Success")
-
-            print(
-                f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
-                f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                f"{Fore.BLUE + Style.BRIGHT}Wait For 90 Seconds For Next Ping...{Style.RESET_ALL}",
-                end="\r"
-            )
-            await asyncio.sleep(1.5 * 60)
         
     async def process_accounts(self, email: str, use_proxy: bool, rotate_proxy: bool):
         is_valid = await self.process_check_connection(email, use_proxy, rotate_proxy)
         if is_valid:
-            tasks = [
-                asyncio.create_task(self.process_user_earning(email, use_proxy)),
-                asyncio.create_task(self.process_send_ping(email, use_proxy))
-            ]
-            await asyncio.gather(*tasks)
+            proxy = self.get_next_proxy_for_account(email) if use_proxy else None
 
+            self.log(f"{Fore.CYAN + Style.BRIGHT}Captcha:{Style.RESET_ALL}")
+
+            cf_solved = await self.solve_cf_turnstile(email, proxy)
+            if not cf_solved:
+                self.log(
+                    f"{Fore.MAGENTA + Style.BRIGHT}    >{Style.RESET_ALL}"
+                    f"{Fore.BLUE + Style.BRIGHT} Status: {Style.RESET_ALL}"
+                    f"{Fore.RED + Style.BRIGHT}Not Solved{Style.RESET_ALL}"
+                )
+                return
+            
+            self.log(
+                f"{Fore.MAGENTA + Style.BRIGHT}    >{Style.RESET_ALL}"
+                f"{Fore.BLUE + Style.BRIGHT} Status: {Style.RESET_ALL}"
+                f"{Fore.GREEN + Style.BRIGHT}Solved{Style.RESET_ALL}"
+            )
+    
+        login = await self.user_login(email, proxy)
+        if login and login.get("message") == "Logged in successfully":
+            access_token = login["data"]["token"]
+
+            self.save_tokens([{"Email":email, "accessToken":access_token}])
+
+            self.log(
+                f"{Fore.CYAN + Style.BRIGHT}Status :{Style.RESET_ALL}"
+                f"{Fore.GREEN + Style.BRIGHT} Token Have Been Saved Successfully {Style.RESET_ALL}"
+            )
+    
     async def main(self):
         try:
-            tokens = self.load_accounts()
-            if not tokens:
-                self.log(f"{Fore.RED+Style.BRIGHT}No Accounts Loaded.{Style.RESET_ALL}")
+            accounts = self.load_accounts()
+            if not accounts:
+                self.log(f"{Fore.RED + Style.BRIGHT}No Accounts Loaded.{Style.RESET_ALL}")
                 return
+            
+            capctha_key = self.load_2captcha_key()
+            if capctha_key:
+                self.CAPTCHA_KEY = capctha_key
             
             use_proxy_choice, rotate_proxy = self.print_question()
 
@@ -300,36 +352,43 @@ class DePINed:
             self.welcome()
             self.log(
                 f"{Fore.GREEN + Style.BRIGHT}Account's Total: {Style.RESET_ALL}"
-                f"{Fore.WHITE + Style.BRIGHT}{len(tokens)}{Style.RESET_ALL}"
+                f"{Fore.WHITE + Style.BRIGHT}{len(accounts)}{Style.RESET_ALL}"
             )
 
             if use_proxy:
                 await self.load_proxies(use_proxy_choice)
 
-            self.log(f"{Fore.CYAN + Style.BRIGHT}={Style.RESET_ALL}"*75)
-
-            tasks = []
-            for idx, account in enumerate(tokens, start=1):
+            separator = "="*25
+            for idx, account in enumerate(accounts, start=1):
                 if account:
                     email = account["Email"]
-                    token = account["accessToken"]
+                    password = account["Password"]
+                    self.log(
+                        f"{Fore.CYAN + Style.BRIGHT}{separator}[{Style.RESET_ALL}"
+                        f"{Fore.WHITE + Style.BRIGHT} {idx} {Style.RESET_ALL}"
+                        f"{Fore.CYAN + Style.BRIGHT}Of{Style.RESET_ALL}"
+                        f"{Fore.WHITE + Style.BRIGHT} {len(accounts)} {Style.RESET_ALL}"
+                        f"{Fore.CYAN + Style.BRIGHT}]{separator}{Style.RESET_ALL}"
+                    )
 
-                    if not "@" in email or not token:
+                    if not "@" in email or not password:
                         self.log(
-                            f"{Fore.CYAN + Style.BRIGHT}[ Account: {Style.RESET_ALL}"
-                            f"{Fore.WHITE + Style.BRIGHT}{idx}{Style.RESET_ALL}"
-                            f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
-                            f"{Fore.CYAN + Style.BRIGHT}Status:{Style.RESET_ALL}"
-                            f"{Fore.RED + Style.BRIGHT} Invalid Account Data {Style.RESET_ALL}"
-                            f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
+                            f"{Fore.CYAN+Style.BRIGHT}Status :{Style.RESET_ALL}"
+                            f"{Fore.RED+Style.BRIGHT} Invalid Account Data {Style.RESET_ALL}"
                         )
                         continue
 
-                    self.access_tokens[email] = token
+                    self.log(
+                        f"{Fore.CYAN + Style.BRIGHT}Account:{Style.RESET_ALL}"
+                        f"{Fore.WHITE + Style.BRIGHT} {self.mask_account(email)} {Style.RESET_ALL}"
+                    )
 
-                    tasks.append(asyncio.create_task(self.process_accounts(email, use_proxy, rotate_proxy)))
+                    self.password[email] = password
 
-            await asyncio.gather(*tasks)
+                    await self.process_accounts(email, use_proxy, rotate_proxy)
+                    await asyncio.sleep(3)
+
+            self.log(f"{Fore.CYAN + Style.BRIGHT}={Style.RESET_ALL}"*68)
 
         except Exception as e:
             self.log(f"{Fore.RED+Style.BRIGHT}Error: {e}{Style.RESET_ALL}")
@@ -343,5 +402,5 @@ if __name__ == "__main__":
         print(
             f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
             f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-            f"{Fore.RED + Style.BRIGHT}[ EXIT ] DePINed - BOT{Style.RESET_ALL}                                       "                              
+            f"{Fore.RED + Style.BRIGHT}[ EXIT ] DePINed - BOT{Style.RESET_ALL}                                      ",                                       
         )
