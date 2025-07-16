@@ -8,24 +8,14 @@ wib = pytz.timezone('Asia/Jakarta')
 
 class DePINed:
     def __init__(self) -> None:
-        self.headers = {
-            "Accept": "application/json, text/plain, */*",
-            "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
-            "Referer": "https://app.depined.org",
-            "Origin": "https://app.depined.org/",
-            "Sec-Fetch-Dest": "empty",
-            "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "same-site",
-            "User-Agent": FakeUserAgent().random
-        }
         self.BASE_API = "https://api.depined.org/api"
         self.PAGE_URL = "https://app.depined.org"
-        self.SITE_KEY = "6LeOzGArAAAAAKB3KZBFGzBZXzQdEzGVRzliVlLu"
+        self.SITE_KEY = "0x4AAAAAAA_n_DLiban-lfA5"
         self.CAPTCHA_KEY = None
+        self.HEADERS = {}
         self.proxies = []
         self.proxy_index = 0
         self.account_proxies = {}
-        self.captcha_tokens = {}
         self.password = {}
 
     def clear_terminal(self):
@@ -41,7 +31,7 @@ class DePINed:
     def welcome(self):
         print(
             f"""
-        {Fore.GREEN + Style.BRIGHT}Auto Setup {Fore.BLUE + Style.BRIGHT}DePINed - BOT
+        {Fore.GREEN + Style.BRIGHT}DePINed {Fore.BLUE + Style.BRIGHT}Auto BOT
             """
             f"""
         {Fore.GREEN + Style.BRIGHT}Rey? {Fore.YELLOW + Style.BRIGHT}<INI WATERMARK>
@@ -103,7 +93,7 @@ class DePINed:
         filename = "proxy.txt"
         try:
             if use_proxy_choice == 1:
-                response = await asyncio.to_thread(requests.get, "https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&proxy_format=protocolipport&format=text")
+                response = await asyncio.to_thread(requests.get, "https://raw.githubusercontent.com/monosans/proxy-list/refs/heads/main/proxies/all.txt")
                 response.raise_for_status()
                 content = response.text
                 with open(filename, 'w') as f:
@@ -193,33 +183,37 @@ class DePINed:
     
     async def check_connection(self, proxy=None):
         url = "https://api.ipify.org?format=json"
+        proxies = {"http":proxy, "https":proxy} if proxy else None
         try:
-            response = await asyncio.to_thread(requests.get, url=url, proxy=proxy, timeout=60, impersonate="chrome110", verify=False)
+            response = await asyncio.to_thread(requests.get, url=url, proxies=proxies, timeout=30, impersonate="chrome110", verify=False)
             response.raise_for_status()
-            return response.json()
+            return True
         except Exception as e:
             self.log(
-                f"{Fore.CYAN + Style.BRIGHT}Error  :{Style.RESET_ALL}"
-                f"{Fore.RED + Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
+                f"{Fore.CYAN + Style.BRIGHT}Status :{Style.RESET_ALL}"
+                f"{Fore.RED + Style.BRIGHT} Connection Not 200 OK {Style.RESET_ALL}"
+                f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                f"{Fore.YELLOW + Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
             )
             return None
     
-    async def solve_cf_turnstile(self, email: str, proxy=None, retries=5):
+    async def solve_cf_turnstile(self, proxy=None, retries=5):
         for attempt in range(retries):
+            proxies = {"http":proxy, "https":proxy} if proxy else None
             try:
                 if self.CAPTCHA_KEY is None:
                     return None
                 
-                url = f"http://2captcha.com/in.php?key={self.CAPTCHA_KEY}&method=userrecaptcha&googlekey={self.SITE_KEY}&pageurl={self.PAGE_URL}&json=1"
-                response = await asyncio.to_thread(requests.get, url=url, proxy=proxy, timeout=60, impersonate="chrome110", verify=False)
+                url = f"http://2captcha.com/in.php?key={self.CAPTCHA_KEY}&method=turnstile&sitekey={self.SITE_KEY}&pageurl={self.PAGE_URL}"
+                response = await asyncio.to_thread(requests.get, url=url, proxies=proxies, timeout=60, impersonate="chrome110", verify=False)
                 response.raise_for_status()
-                result = response.json()
+                result = response.text
 
-                if result.get("status") != 1:
+                if 'OK|' not in result:
                     await asyncio.sleep(5)
                     continue
 
-                request_id = result.get("request")
+                request_id = result.split('|')[1]
 
                 self.log(
                     f"{Fore.MAGENTA + Style.BRIGHT}    >{Style.RESET_ALL}"
@@ -228,16 +222,15 @@ class DePINed:
                 )
 
                 for _ in range(30):
-                    res_url = f"http://2captcha.com/res.php?key={self.CAPTCHA_KEY}&action=get&id={request_id}&json=1"
-                    res_response = await asyncio.to_thread(requests.get, url=res_url, proxy=proxy, timeout=60, impersonate="chrome110", verify=False)
+                    res_url = f"http://2captcha.com/res.php?key={self.CAPTCHA_KEY}&action=get&id={request_id}"
+                    res_response = await asyncio.to_thread(requests.get, url=res_url, proxies=proxies, timeout=60, impersonate="chrome110", verify=False)
                     res_response.raise_for_status()
-                    res_result = res_response.json()
+                    res_result = res_response.text
 
-                    if res_result.get("status") == 1:
-                        captcha_token = res_result.get("request")
-                        self.captcha_tokens[email] = captcha_token
-                        return True
-                    elif res_result.get("request") == "CAPCHA_NOT_READY":
+                    if 'OK|' in res_result:
+                        turnstile_token = res_result.split('|')[1]
+                        return turnstile_token
+                    elif res_result == "CAPCHA_NOT_READY":
                         self.log(
                             f"{Fore.MAGENTA + Style.BRIGHT}    >{Style.RESET_ALL}"
                             f"{Fore.BLUE + Style.BRIGHT} Status: {Style.RESET_ALL}"
@@ -254,17 +247,16 @@ class DePINed:
                     continue
                 return None
 
-    async def user_login(self, email: str, proxy=None, retries=5):
+    async def user_login(self, email: str, turnstile_token: str, proxy=None, retries=5):
         url = f"{self.BASE_API}/user/login"
-        data = json.dumps({"email":email, "password":self.password[email], "g-recaptcha":self.captcha_tokens[email]})
-        headers = {
-            **self.headers,
-            "Content-Length": str(len(data)),
-            "Content-Type": "application/json"
-        }
+        data = json.dumps({"email":email, "password":self.password[email], "cf-turnstile-response":turnstile_token})
+        headers = self.HEADERS[email].copy()
+        headers["Content-Length"] = str(len(data))
+        headers["Content-Type"] = "application/json"
         for attempt in range(retries):
+            proxies = {"http":proxy, "https":proxy} if proxy else None
             try:
-                response = await asyncio.to_thread(requests.post, url=url, headers=headers, data=data, proxy=proxy, timeout=60, impersonate="chrome110", verify=False)
+                response = await asyncio.to_thread(requests.post, url=url, headers=headers, data=data, proxies=proxies, timeout=60, impersonate="chrome110", verify=False)
                 response.raise_for_status()
                 return response.json()
             except Exception as e:
@@ -283,20 +275,21 @@ class DePINed:
     async def process_check_connection(self, email: str, use_proxy: bool, rotate_proxy: bool):
         while True:
             proxy = self.get_next_proxy_for_account(email) if use_proxy else None
+            self.log(
+                f"{Fore.CYAN+Style.BRIGHT}Proxy  :{Style.RESET_ALL}"
+                f"{Fore.WHITE+Style.BRIGHT} {proxy} {Style.RESET_ALL}"
+            )
 
             is_valid = await self.check_connection(proxy)
             if is_valid:
-                self.log(
-                    f"{Fore.CYAN + Style.BRIGHT}Proxy  :{Style.RESET_ALL}"
-                    f"{Fore.WHITE + Style.BRIGHT} {proxy} {Style.RESET_ALL}"
-                )
                 return True
             
             if rotate_proxy:
                 proxy = self.rotate_proxy_for_account(email)
+                await asyncio.sleep(1)
+                continue
 
-            await asyncio.sleep(5)
-            continue
+            return False
         
     async def process_accounts(self, email: str, use_proxy: bool, rotate_proxy: bool):
         is_valid = await self.process_check_connection(email, use_proxy, rotate_proxy)
@@ -304,9 +297,13 @@ class DePINed:
             proxy = self.get_next_proxy_for_account(email) if use_proxy else None
 
             self.log(f"{Fore.CYAN + Style.BRIGHT}Captcha:{Style.RESET_ALL}")
+            self.log(
+                f"{Fore.MAGENTA + Style.BRIGHT}    >{Style.RESET_ALL}"
+                f"{Fore.YELLOW + Style.BRIGHT} Solving Captcha Turnstile... {Style.RESET_ALL}"
+            )
 
-            cf_solved = await self.solve_cf_turnstile(email, proxy)
-            if not cf_solved:
+            turnstile_token = await self.solve_cf_turnstile(proxy)
+            if not turnstile_token:
                 self.log(
                     f"{Fore.MAGENTA + Style.BRIGHT}    >{Style.RESET_ALL}"
                     f"{Fore.BLUE + Style.BRIGHT} Status: {Style.RESET_ALL}"
@@ -320,7 +317,7 @@ class DePINed:
                 f"{Fore.GREEN + Style.BRIGHT}Solved{Style.RESET_ALL}"
             )
     
-        login = await self.user_login(email, proxy)
+        login = await self.user_login(email, turnstile_token, proxy)
         if login and login.get("message") == "Logged in successfully":
             access_token = login["data"]["token"]
 
@@ -377,6 +374,17 @@ class DePINed:
                             f"{Fore.RED+Style.BRIGHT} Invalid Account Data {Style.RESET_ALL}"
                         )
                         continue
+
+                    self.HEADERS[email] = {
+                        "Accept": "application/json, text/plain, */*",
+                        "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+                        "Referer": "https://app.depined.org",
+                        "Origin": "https://app.depined.org/",
+                        "Sec-Fetch-Dest": "empty",
+                        "Sec-Fetch-Mode": "cors",
+                        "Sec-Fetch-Site": "same-site",
+                        "User-Agent": FakeUserAgent().random
+                    }
 
                     self.log(
                         f"{Fore.CYAN + Style.BRIGHT}Account:{Style.RESET_ALL}"
