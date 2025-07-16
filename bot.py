@@ -8,17 +8,8 @@ wib = pytz.timezone('Asia/Jakarta')
 
 class DePINed:
     def __init__(self) -> None:
-        self.headers = {
-            "Accept": "*/*",
-            "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
-            "Origin": "chrome-extension://pjlappmodaidbdjhmhifbnnmmkkicjoc",
-            "Sec-Fetch-Dest": "empty",
-            "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "none",
-            "User-Agent": FakeUserAgent().random,
-            "X-Requested-With": "XMLHttpRequest"
-        }
         self.BASE_API = "https://api.depined.org/api"
+        self.HEADERS = {}
         self.proxies = []
         self.proxy_index = 0
         self.account_proxies = {}
@@ -37,7 +28,7 @@ class DePINed:
     def welcome(self):
         print(
             f"""
-        {Fore.GREEN + Style.BRIGHT}Auto Ping {Fore.BLUE + Style.BRIGHT}DePINed - BOT
+        {Fore.GREEN + Style.BRIGHT}DePINed {Fore.BLUE + Style.BRIGHT}Auto BOT
             """
             f"""
         {Fore.GREEN + Style.BRIGHT}Rey? {Fore.YELLOW + Style.BRIGHT}<INI WATERMARK>
@@ -68,7 +59,7 @@ class DePINed:
         filename = "proxy.txt"
         try:
             if use_proxy_choice == 1:
-                response = await asyncio.to_thread(requests.get, "https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&proxy_format=protocolipport&format=text")
+                response = await asyncio.to_thread(requests.get, "https://raw.githubusercontent.com/monosans/proxy-list/refs/heads/main/proxies/all.txt")
                 response.raise_for_status()
                 content = response.text
                 with open(filename, 'w') as f:
@@ -171,53 +162,52 @@ class DePINed:
     
     async def check_connection(self, email: str, proxy=None):
         url = "https://api.ipify.org?format=json"
+        proxies = {"http":proxy, "https":proxy} if proxy else None
+        await asyncio.sleep(3)
         try:
-            response = await asyncio.to_thread(requests.get, url=url, proxy=proxy, timeout=60, impersonate="chrome110", verify=False)
+            response = await asyncio.to_thread(requests.get, url=url, proxies=proxies, timeout=30, impersonate="chrome110", verify=False)
             response.raise_for_status()
-            return response.json()
+            return True
         except Exception as e:
             self.print_message(email, proxy, Fore.RED, f"Connection Not 200 OK: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
             return None
 
     async def user_epoch_earning(self, email: str, proxy=None, retries=5):
         url = f"{self.BASE_API}/stats/epoch-earnings"
-        headers = {
-            **self.headers,
-            "Authorization": f"Bearer {self.access_tokens[email]}"
-        }
+        headers = self.HEADERS[email].copy()
+        headers["Authorization"] = f"Bearer {self.access_tokens[email]}"
         for attempt in range(retries):
+            proxies = {"http":proxy, "https":proxy} if proxy else None
+            await asyncio.sleep(5)
             try:
-                response = await asyncio.to_thread(requests.get, url=url, headers=headers, proxy=proxy, timeout=60, impersonate="chrome110", verify=False)
+                response = await asyncio.to_thread(requests.get, url=url, headers=headers, proxies=proxies, timeout=60, impersonate="chrome110", verify=False)
                 response.raise_for_status()
                 return response.json()
             except Exception as e:
                 if attempt < retries - 1:
-                    await asyncio.sleep(5)
                     continue
                 self.print_message(email, proxy, Fore.RED, f"GET Earning Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
-
-        return None
+                return None
             
     async def user_send_ping(self, email: str, proxy=None, retries=5):
         url = f"{self.BASE_API}/user/widget-connect"
         data = json.dumps({"connected":True})
-        headers = {
-            "Authorization": f"Bearer {self.access_tokens[email]}",
-            "Content-Length": str(len(data)),
-            "Content-Type": "application/json"
-        }
+        headers = self.HEADERS[email].copy()
+        headers["Authorization"] = f"Bearer {self.access_tokens[email]}"
+        headers["Content-Length"] = str(len(data))
+        headers["Content-Type"] = "application/json"
         for attempt in range(retries):
+            proxies = {"http":proxy, "https":proxy} if proxy else None
+            await asyncio.sleep(5)
             try:
-                response = await asyncio.to_thread(requests.post, url=url, headers=headers, data=data, proxy=proxy, timeout=60, impersonate="chrome110", verify=False)
+                response = await asyncio.to_thread(requests.post, url=url, headers=headers, data=data, proxies=proxies, timeout=60, impersonate="chrome110", verify=False)
                 response.raise_for_status()
                 return response.json()
             except Exception as e:
                 if attempt < retries - 1:
-                    await asyncio.sleep(5)
                     continue
                 self.print_message(email, proxy, Fore.RED, f"PING Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
-
-        return None
+                return None
             
     async def process_check_connection(self, email: str, use_proxy: bool, rotate_proxy: bool):
         while True:
@@ -229,9 +219,6 @@ class DePINed:
             
             if rotate_proxy:
                 proxy = self.rotate_proxy_for_account(email)
-
-            await asyncio.sleep(5)
-            continue
             
     async def process_user_earning(self, email: str, use_proxy: bool):
         while True:
@@ -324,6 +311,17 @@ class DePINed:
                             f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
                         )
                         continue
+
+                    self.HEADERS[email] = {
+                        "Accept": "*/*",
+                        "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+                        "Origin": "chrome-extension://pjlappmodaidbdjhmhifbnnmmkkicjoc",
+                        "Sec-Fetch-Dest": "empty",
+                        "Sec-Fetch-Mode": "cors",
+                        "Sec-Fetch-Site": "none",
+                        "User-Agent": FakeUserAgent().random,
+                        "X-Requested-With": "XMLHttpRequest"
+                    }
 
                     self.access_tokens[email] = token
 
