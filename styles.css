@@ -319,37 +319,37 @@ body {
     .container {
         padding: 15px;
     }
-    
+
     .header {
         flex-direction: column;
         gap: 15px;
         text-align: center;
     }
-    
+
     .logo h1 {
         font-size: 1.5rem;
     }
-    
+
     .hero-section h2 {
         font-size: 2rem;
     }
-    
+
     .stats-grid {
         grid-template-columns: 1fr;
     }
-    
+
     .info-section {
         grid-template-columns: 1fr;
     }
-    
+
     .stat-card {
         padding: 20px;
     }
-    
+
     .info-card {
         padding: 25px;
     }
-    
+
     .endpoints-section {
         padding: 25px;
     }
@@ -359,21 +359,21 @@ body {
     .hero-section h2 {
         font-size: 1.5rem;
     }
-    
+
     .hero-section p {
         font-size: 1rem;
     }
-    
+
     .logo i {
         font-size: 2rem;
     }
-    
+
     .stat-card {
         flex-direction: column;
         text-align: center;
         gap: 15px;
     }
-    
+
     .endpoint-card {
         flex-direction: column;
         align-items: flex-start;
