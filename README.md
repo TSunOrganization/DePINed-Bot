@@ -5,7 +5,8 @@ DePINed BOT
 - Use Code `DEInRb51YgfYaq`
 
 ## Features
-
+  - Add Function For 24/7 Run On Replit Using Uptimerbot
+  - Add 10 Working Private Proxcy For Public Use
   - Auto Get Account Information
   - Auto Run With [Free Proxyscrape](https://proxyscrape.com/free-proxy-list) Proxy - `Choose 1`
   - Auto Run With Private Proxy - `Choose 2`
@@ -23,7 +24,7 @@ DePINed BOT
 
 1. **Clone The Repositories:**
    ```bash
-   git clone https://github.com/vonssy/DePINed-BOT.git
+   git clone https://github.com/TSunOrganization/DePINed-BOT.git
    ```
    ```bash
    cd DePINed-BOT
@@ -108,3 +109,6 @@ If you have questions, find an issue, or have suggestions for improvement, feel 
 
 **vonssy**# DePINed-Bot
 # DePINed-Bot
+## Buy Me a Coffee
+
+- **Credits:** Original Owner @Vonssy | ReDesign By @Saeedx302
