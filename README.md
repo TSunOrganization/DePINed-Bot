@@ -109,6 +109,6 @@ If you have questions, find an issue, or have suggestions for improvement, feel 
 
 **vonssy**# DePINed-Bot
 # DePINed-Bot
-## Buy Me a Coffee
+## Credits To
 
 - **Credits:** Original Owner @Vonssy | ReDesign By @Saeedx302
