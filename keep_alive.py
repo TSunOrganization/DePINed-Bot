@@ -1,16 +1,30 @@
 
-from flask import Flask
+from flask import Flask, render_template_string, send_from_directory
 from threading import Thread
 import time
 import datetime
+import os
 
-app = Flask('')
+app = Flask('', static_folder='.', static_url_path='')
 
 # Store start time when server starts
 start_time = time.time()
 
 @app.route('/')
 def home():
+    # Serve the index.html file
+    try:
+        with open('index.html', 'r', encoding='utf-8') as f:
+            return f.read()
+    except FileNotFoundError:
+        return serve_fallback_page()
+
+@app.route('/styles.css')
+def styles():
+    return send_from_directory('.', 'styles.css')
+
+@app.route('/uptime-data')
+def uptime_data():
     current_time = time.time()
     uptime_seconds = int(current_time - start_time)
     
@@ -20,6 +34,18 @@ def home():
     minutes = (uptime_seconds % 3600) // 60
     seconds = uptime_seconds % 60
     
+    return {
+        "uptime_seconds": uptime_seconds,
+        "days": days,
+        "hours": hours,
+        "minutes": minutes,
+        "seconds": seconds,
+        "start_time": start_time,
+        "current_time": current_time,
+        "formatted_uptime": f"{days}d {hours:02d}h {minutes:02d}m {seconds:02d}s"
+    }
+
+def serve_fallback_page():
     return f'''
     <!DOCTYPE html>
     <html>
