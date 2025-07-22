@@ -336,6 +336,9 @@ class DePINed:
 
 if __name__ == "__main__":
     try:
+        # Start the web server for uptime monitoring
+        keep_alive()
+        
         bot = DePINed()
         asyncio.run(bot.main())
     except KeyboardInterrupt:
