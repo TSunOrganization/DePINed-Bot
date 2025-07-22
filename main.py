@@ -339,6 +339,10 @@ if __name__ == "__main__":
         # Start the web server for uptime monitoring
         keep_alive()
         
+        # Give Flask server time to start quietly
+        import time
+        time.sleep(2)
+        
         bot = DePINed()
         asyncio.run(bot.main())
     except KeyboardInterrupt:
