@@ -1,5 +1,5 @@
-entrypoint = "main.py"
 modules = ["python-3.11"]
+run = "python main.py"
 
 [nix]
 channel = "stable-24_05"
