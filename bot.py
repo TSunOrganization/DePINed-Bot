@@ -1,4 +1,3 @@
-from keep_alive import keep_alive
 from curl_cffi import requests
 from fake_useragent import FakeUserAgent
 from datetime import datetime
@@ -40,7 +39,7 @@ class DePINed:
         hours, remainder = divmod(seconds, 3600)
         minutes, seconds = divmod(remainder, 60)
         return f"{int(hours):02}:{int(minutes):02}:{int(seconds):02}"
-
+    
     def load_accounts(self):
         filename = "tokens.json"
         try:
@@ -55,7 +54,7 @@ class DePINed:
                 return []
         except json.JSONDecodeError:
             return []
-
+    
     async def load_proxies(self, use_proxy_choice: int):
         filename = "proxy.txt"
         try:
@@ -72,7 +71,7 @@ class DePINed:
                     return
                 with open(filename, 'r') as f:
                     self.proxies = [line.strip() for line in f.read().splitlines() if line.strip()]
-
+            
             if not self.proxies:
                 self.log(f"{Fore.RED + Style.BRIGHT}No Proxies Found.{Style.RESET_ALL}")
                 return
@@ -81,7 +80,7 @@ class DePINed:
                 f"{Fore.GREEN + Style.BRIGHT}Proxies Total  : {Style.RESET_ALL}"
                 f"{Fore.WHITE + Style.BRIGHT}{len(self.proxies)}{Style.RESET_ALL}"
             )
-
+        
         except Exception as e:
             self.log(f"{Fore.RED + Style.BRIGHT}Failed To Load Proxies: {e}{Style.RESET_ALL}")
             self.proxies = []
@@ -108,7 +107,7 @@ class DePINed:
         self.account_proxies[account] = proxy
         self.proxy_index = (self.proxy_index + 1) % len(self.proxies)
         return proxy
-
+    
     def mask_account(self, account):
         if "@" in account:
             local, domain = account.split('@', 1)
@@ -160,7 +159,7 @@ class DePINed:
                     print(f"{Fore.RED + Style.BRIGHT}Invalid input. Enter 'y' or 'n'.{Style.RESET_ALL}")
 
         return choose, rotate
-
+    
     async def check_connection(self, email: str, proxy=None):
         url = "https://api.ipify.org?format=json"
         proxies = {"http":proxy, "https":proxy} if proxy else None
@@ -189,7 +188,7 @@ class DePINed:
                     continue
                 self.print_message(email, proxy, Fore.RED, f"GET Earning Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
                 return None
-
+            
     async def user_send_ping(self, email: str, proxy=None, retries=5):
         url = f"{self.BASE_API}/user/widget-connect"
         data = json.dumps({"connected":True})
@@ -209,7 +208,7 @@ class DePINed:
                     continue
                 self.print_message(email, proxy, Fore.RED, f"PING Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
                 return None
-
+            
     async def process_check_connection(self, email: str, use_proxy: bool, rotate_proxy: bool):
         while True:
             proxy = self.get_next_proxy_for_account(email) if use_proxy else None
@@ -217,10 +216,10 @@ class DePINed:
             is_valid = await self.check_connection(email, proxy)
             if is_valid:
                 return True
-
+            
             if rotate_proxy:
                 proxy = self.rotate_proxy_for_account(email)
-
+            
     async def process_user_earning(self, email: str, use_proxy: bool):
         while True:
             proxy = self.get_next_proxy_for_account(email) if use_proxy else None
@@ -237,7 +236,7 @@ class DePINed:
                 )
 
             await asyncio.sleep(15 * 60)
-
+            
     async def process_send_ping(self, email: str, use_proxy: bool):
         while True:
             proxy = self.get_next_proxy_for_account(email) if use_proxy else None
@@ -261,7 +260,7 @@ class DePINed:
                 end="\r"
             )
             await asyncio.sleep(1.5 * 60)
-
+        
     async def process_accounts(self, email: str, use_proxy: bool, rotate_proxy: bool):
         is_valid = await self.process_check_connection(email, use_proxy, rotate_proxy)
         if is_valid:
@@ -277,7 +276,7 @@ class DePINed:
             if not tokens:
                 self.log(f"{Fore.RED+Style.BRIGHT}No Accounts Loaded.{Style.RESET_ALL}")
                 return
-
+            
             use_proxy_choice, rotate_proxy = self.print_question()
 
             use_proxy = False
@@ -336,13 +335,6 @@ class DePINed:
 
 if __name__ == "__main__":
     try:
-        # Start the web server for uptime monitoring
-        keep_alive()
-        
-        # Give Flask server time to start quietly
-        import time
-        time.sleep(2)
-        
         bot = DePINed()
         asyncio.run(bot.main())
     except KeyboardInterrupt:
