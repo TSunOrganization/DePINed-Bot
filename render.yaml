@@ -3,7 +3,7 @@ services:
     name: TSun-DePINed-Bot
     env: python
     region: singapore
-    plan: free # Note: Background Workers may not be on the free plan, please check Render's current pricing.
+    # The 'plan' is now determined by your account's subscription
     buildCommand: "pip install -r requirements.txt"
     startCommand: "python bot.py"
     autoDeploy: true
