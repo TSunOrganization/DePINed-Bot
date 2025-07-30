@@ -1,3 +1,11 @@
+
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+DePINed Bot - Enhanced Version 2.0
+Deployment-ready with comprehensive monitoring and analytics
+"""
+
 from curl_cffi import requests
 from fake_useragent import FakeUserAgent
 from datetime import datetime
@@ -389,6 +397,47 @@ class DePINed:
                     await self.send_daily_summary()
                 
             except Exception as e:
+
+    
+    async def startup_health_check(self):
+        """Perform comprehensive startup health check"""
+        issues = []
+        
+        try:
+            # Check tokens file
+            if not os.path.exists('tokens.json'):
+                issues.append("tokens.json missing")
+            
+            # Check proxy file if needed
+            if not os.path.exists('proxy.txt') and len(self.proxies) == 0:
+                issues.append("No proxies available")
+            
+            # Test telegram connectivity
+            test_result = await self.send_telegram_message(self.ADMIN_CHAT_ID, "🔍 Bot startup test", "INFO")
+            if not test_result:
+                issues.append("Telegram connectivity failed")
+            
+            # Check internet connectivity
+            try:
+                response = await asyncio.to_thread(requests.get, "https://httpbin.org/ip", timeout=10)
+                if response.status_code != 200:
+                    issues.append("Internet connectivity issues")
+            except Exception:
+                issues.append("Internet connectivity failed")
+            
+            if issues:
+                status = f"⚠️ Issues detected: {', '.join(issues)}"
+                await self.send_failure_notification("Startup Issues", f"Bot started with issues: {', '.join(issues)}", level="WARNING")
+            else:
+                status = "✅ All systems operational"
+                
+            return status
+            
+        except Exception as e:
+            error_status = f"❌ Health check failed: {str(e)}"
+            await self.send_failure_notification("Health Check Failed", str(e), level="ERROR")
+            return error_status
+
                 error_msg = f"Error sending uptime report: {e}"
                 self.log(f"{Fore.RED}{error_msg}{Style.RESET_ALL}")
                 await self.send_failure_notification("Report System Error", error_msg, level="WARNING")
@@ -554,38 +603,45 @@ class DePINed:
         self.setup_web_interface()
         self.app.run(host='0.0.0.0', port=5000, debug=False)
 
+    def load_config(self):
+        """Load configuration from config.json and environment variables"""
+        try:
+            with open('config.json', 'r') as f:
+                config = json.load(f)
+            
+            # Get proxy settings from config or environment
+            proxy_choice = int(os.environ.get('PROXY_CHOICE', config.get('bot_settings', {}).get('proxy_choice', 1)))
+            rotate_proxy = os.environ.get('ROTATE_PROXY', str(config.get('bot_settings', {}).get('proxy_rotation', True))).lower() == 'true'
+            
+            return proxy_choice, rotate_proxy
+            
+        except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
+            self.log(f"{Fore.YELLOW}Config error: {e}. Using defaults.{Style.RESET_ALL}")
+            # Default to free proxyscrape with rotation
+            return 1, True
+    
     def print_question(self):
-        while True:
-            try:
-                print(f"{Fore.WHITE + Style.BRIGHT}1. Run With Free Proxyscrape Proxy{Style.RESET_ALL}")
-                print(f"{Fore.WHITE + Style.BRIGHT}2. Run With Private Proxy{Style.RESET_ALL}")
-                print(f"{Fore.WHITE + Style.BRIGHT}3. Run Without Proxy{Style.RESET_ALL}")
-                choose = int(input(f"{Fore.BLUE + Style.BRIGHT}Choose [1/2/3] -> {Style.RESET_ALL}").strip())
-
-                if choose in [1, 2, 3]:
-                    proxy_type = (
-                        "With Free Proxyscrape" if choose == 1 else 
-                        "With Private" if choose == 2 else 
-                        "Without"
-                    )
-                    print(f"{Fore.GREEN + Style.BRIGHT}Run {proxy_type} Proxy Selected.{Style.RESET_ALL}")
-                    break
-                else:
-                    print(f"{Fore.RED + Style.BRIGHT}Please enter either 1, 2 or 3.{Style.RESET_ALL}")
-            except ValueError:
-                print(f"{Fore.RED + Style.BRIGHT}Invalid input. Enter a number (1, 2 or 3).{Style.RESET_ALL}")
-
-        rotate = False
-        if choose in [1, 2]:
-            while True:
-                rotate = input(f"{Fore.BLUE + Style.BRIGHT}Rotate Invalid Proxy? [y/n] -> {Style.RESET_ALL}").strip()
-                if rotate in ["y", "n"]:
-                    rotate = rotate == "y"
-                    break
-                else:
-                    print(f"{Fore.RED + Style.BRIGHT}Invalid input. Enter 'y' or 'n'.{Style.RESET_ALL}")
-
-        return choose, rotate
+        """Non-interactive configuration loading for deployment environments"""
+        try:
+            choose, rotate = self.load_config()
+            
+            if choose not in [1, 2, 3]:
+                choose = 1  # Default to free proxy
+                
+            proxy_type = (
+                "With Free Proxyscrape" if choose == 1 else 
+                "With Private" if choose == 2 else 
+                "Without"
+            )
+            
+            self.log(f"{Fore.GREEN + Style.BRIGHT}Auto-configured: Run {proxy_type} Proxy, Rotation: {rotate}{Style.RESET_ALL}")
+            return choose, rotate
+            
+        except Exception as e:
+            error_msg = f"Configuration loading failed: {str(e)}"
+            self.log(f"{Fore.RED + Style.BRIGHT}{error_msg}{Style.RESET_ALL}")
+            # Return safe defaults
+            return 1, True
     
     async def check_connection(self, email: str, proxy=None):
         url = "https://api.ipify.org?format=json"
@@ -752,9 +808,16 @@ class DePINed:
 
     async def main(self):
         try:
+            # Check if running in deployment environment
+            is_deployment = os.environ.get('RENDER') or os.environ.get('HEROKU') or not os.isatty(0)
+            if is_deployment:
+                self.log(f"{Fore.CYAN}Running in deployment mode{Style.RESET_ALL}")
+            
             tokens = self.load_accounts()
             if not tokens:
-                self.log(f"{Fore.RED+Style.BRIGHT}No Accounts Loaded.{Style.RESET_ALL}")
+                error_msg = "No Accounts Loaded - Check tokens.json file"
+                self.log(f"{Fore.RED+Style.BRIGHT}{error_msg}{Style.RESET_ALL}")
+                await self.send_failure_notification("Configuration Error", error_msg, level="CRITICAL")
                 return
             
             use_proxy_choice, rotate_proxy = self.print_question()
@@ -785,14 +848,19 @@ class DePINed:
             web_thread.start()
             self.log(f"{Fore.GREEN}Web dashboard started at http://0.0.0.0:5000{Style.RESET_ALL}")
             
+            # Perform startup health check
+            health_status = await self.startup_health_check()
+            
             # Send initial startup notification
             startup_message = f"""
 🚀 <b>DePINed Bot Started!</b>
 
 📅 <b>Start time:</b> {self.start_time.strftime('%Y-%m-%d %H:%M:%S %Z')}
 📧 <b>Active accounts:</b> {self.active_accounts}
-🌐 <b>Web dashboard:</b> Available
+🌐 <b>Web dashboard:</b> http://0.0.0.0:5000
 📡 <b>Telegram notifications:</b> Enabled
+🔧 <b>Proxy mode:</b> {"Free Proxyscrape" if use_proxy_choice == 1 else "Private" if use_proxy_choice == 2 else "None"}
+📊 <b>Health status:</b> {health_status}
 
 Bot is now running and will send reports every 5 minutes.
             """

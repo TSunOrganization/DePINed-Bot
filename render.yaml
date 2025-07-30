@@ -16,3 +16,9 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.0
+      - key: PROXY_CHOICE
+        value: "1"
+      - key: ROTATE_PROXY
+        value: "true"
+      - key: RENDER
+        value: "true"

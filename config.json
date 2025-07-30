@@ -4,6 +4,7 @@
         "ping_interval": 90,
         "report_interval": 300,
         "retry_attempts": 5,
+        "proxy_choice": 1,
         "proxy_rotation": true,
         "auto_blacklist": true
     },
