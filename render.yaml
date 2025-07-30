@@ -1,0 +1,22 @@
+services:
+  - type: worker
+    name: TSun-DePINed-Bot
+    env: python
+    region: singapore  # Closest to you for better latency
+    plan: free # Note: Background Workers may not be on the free plan, check Render's pricing.
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python bot.py"
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.4 # Specify a Python version
+    secretFiles:
+      - key: TOKENS_FILE
+        name: tokens.json
+        path: ./tokens.json
+      - key: PROXY_FILE
+        name: proxy.txt
+        path: ./proxy.txt
+      - key: CAPTCHA_KEY_FILE
+        name: 2captcha_key.txt
+        path: ./2captcha_key.txt
