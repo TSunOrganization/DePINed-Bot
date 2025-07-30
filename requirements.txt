@@ -1,5 +1,10 @@
+
 curl-cffi==0.7.1
 fake-useragent==1.5.1
 colorama==0.4.6
 pytz==2024.1
-flask==3.0.0
+requests==2.32.4
+asyncio
+json
+os
+time
