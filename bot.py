@@ -3,6 +3,9 @@ from fake_useragent import FakeUserAgent
 from datetime import datetime
 from colorama import *
 import asyncio, json, os, pytz
+from flask import Flask, render_template_string
+import threading
+import time
 
 wib = pytz.timezone('Asia/Jakarta')
 
@@ -14,6 +17,20 @@ class DePINed:
         self.proxy_index = 0
         self.account_proxies = {}
         self.access_tokens = {}
+        
+        # Telegram Bot Configuration
+        self.TELEGRAM_BOT_TOKEN = "6381595536:AAHhbkjoGWhYLZ7OMglW5Q9lW7LjEF8yePc"
+        self.ADMIN_CHAT_ID = "6218146252"
+        self.USER_CHAT_ID = "5734967213"
+        self.GROUP_ID = "-1002193530778"
+        
+        # Bot Statistics
+        self.start_time = datetime.now().astimezone(wib)
+        self.active_accounts = 0
+        self.total_pings_sent = 0
+        
+        # Flask app for web interface
+        self.app = Flask(__name__)
 
     def clear_terminal(self):
         os.system('cls' if os.name == 'nt' else 'clear')
@@ -82,7 +99,9 @@ class DePINed:
             )
         
         except Exception as e:
-            self.log(f"{Fore.RED + Style.BRIGHT}Failed To Load Proxies: {e}{Style.RESET_ALL}")
+            error_msg = f"Failed To Load Proxies: {str(e)}"
+            self.log(f"{Fore.RED + Style.BRIGHT}{error_msg}{Style.RESET_ALL}")
+            await self.send_failure_notification("Proxy Loading Failed", error_msg)
             self.proxies = []
 
     def check_proxy_schemes(self, proxies):
@@ -113,6 +132,88 @@ class DePINed:
             local, domain = account.split('@', 1)
             hide_local = local[:3] + '*' * 3 + local[-3:]
             return f"{hide_local}@{domain}"
+    
+    async def send_telegram_message(self, chat_id, message):
+        url = f"https://api.telegram.org/bot{self.TELEGRAM_BOT_TOKEN}/sendMessage"
+        data = {
+            "chat_id": chat_id,
+            "text": message,
+            "parse_mode": "HTML"
+        }
+        try:
+            response = await asyncio.to_thread(requests.post, url=url, json=data, timeout=30)
+            response.raise_for_status()
+            return True
+        except Exception as e:
+            self.log(f"{Fore.RED}Failed to send Telegram message: {e}{Style.RESET_ALL}")
+            return False
+    
+    async def send_failure_notification(self, error_type, error_message, account_email=None):
+        """Send failure notifications to all configured recipients"""
+        current_time = datetime.now().astimezone(wib)
+        
+        if account_email:
+            message = f"""
+🚨 <b>Bot Failure Alert</b>
+
+❌ <b>Error Type:</b> {error_type}
+📧 <b>Account:</b> {self.mask_account(account_email)}
+🔍 <b>Details:</b> {error_message}
+🕐 <b>Time:</b> {current_time.strftime('%Y-%m-%d %H:%M:%S %Z')}
+
+Please check the bot status and take necessary action.
+            """
+        else:
+            message = f"""
+🚨 <b>Bot System Failure Alert</b>
+
+❌ <b>Error Type:</b> {error_type}
+🔍 <b>Details:</b> {error_message}
+🕐 <b>Time:</b> {current_time.strftime('%Y-%m-%d %H:%M:%S %Z')}
+
+The bot system encountered an error. Please check immediately.
+            """
+        
+        # Send to all recipients
+        await self.send_telegram_message(self.ADMIN_CHAT_ID, message)
+        await self.send_telegram_message(self.USER_CHAT_ID, message)
+        await self.send_telegram_message(self.GROUP_ID, message)
+    
+    async def send_uptime_report(self):
+        while True:
+            try:
+                current_time = datetime.now().astimezone(wib)
+                uptime_delta = current_time - self.start_time
+                days = uptime_delta.days
+                hours, remainder = divmod(uptime_delta.seconds, 3600)
+                minutes, _ = divmod(remainder, 60)
+                
+                message = f"""
+🤖 <b>DePINed Bot Status Report</b>
+
+⏱️ <b>Current uptime:</b> {days} days, {hours} hours, {minutes} minutes
+📧 <b>Active accounts:</b> {self.active_accounts}
+📊 <b>Total pings sent:</b> {self.total_pings_sent}
+📅 <b>Bot start time:</b> {self.start_time.strftime('%Y-%m-%d %H:%M:%S %Z')}
+🕐 <b>Current timestamp:</b> {current_time.strftime('%Y-%m-%d %H:%M:%S %Z')}
+
+✅ Bot is running smoothly!
+                """
+                
+                # Send to admin
+                await self.send_telegram_message(self.ADMIN_CHAT_ID, message)
+                # Send to user
+                await self.send_telegram_message(self.USER_CHAT_ID, message)
+                # Send to group
+                await self.send_telegram_message(self.GROUP_ID, message)
+                
+                self.log(f"{Fore.GREEN}Uptime report sent to Telegram{Style.RESET_ALL}")
+                
+            except Exception as e:
+                self.log(f"{Fore.RED}Error sending uptime report: {e}{Style.RESET_ALL}")
+            
+            # Wait 5 minutes
+            await asyncio.sleep(5 * 60)
 
     def print_message(self, email, proxy, color, message):
         self.log(
@@ -126,6 +227,56 @@ class DePINed:
             f"{color + Style.BRIGHT} {message} {Style.RESET_ALL}"
             f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
         )
+
+    def setup_web_interface(self):
+        @self.app.route('/')
+        def dashboard():
+            with open('index.html', 'r') as f:
+                html_content = f.read()
+            return html_content
+        
+        @self.app.route('/uptime-data')
+        def uptime_data():
+            current_time = datetime.now().astimezone(wib)
+            uptime_delta = current_time - self.start_time
+            days = uptime_delta.days
+            hours, remainder = divmod(uptime_delta.seconds, 3600)
+            minutes, seconds = divmod(remainder, 60)
+            
+            return {
+                "days": days,
+                "hours": hours,
+                "minutes": minutes,
+                "seconds": seconds,
+                "active_accounts": self.active_accounts,
+                "total_pings": self.total_pings_sent,
+                "start_time": self.start_time.strftime('%Y-%m-%d %H:%M:%S %Z')
+            }
+        
+        @self.app.route('/health')
+        def health():
+            return {"status": "healthy", "uptime": str(datetime.now().astimezone(wib) - self.start_time)}
+        
+        @self.app.route('/ping')
+        def ping():
+            return {"message": "pong", "timestamp": datetime.now().astimezone(wib).isoformat()}
+        
+        @self.app.route('/status')
+        def status():
+            current_time = datetime.now().astimezone(wib)
+            uptime_delta = current_time - self.start_time
+            return {
+                "status": "running",
+                "uptime": str(uptime_delta),
+                "active_accounts": self.active_accounts,
+                "total_pings_sent": self.total_pings_sent,
+                "start_time": self.start_time.isoformat(),
+                "current_time": current_time.isoformat()
+            }
+    
+    def start_web_server(self):
+        self.setup_web_interface()
+        self.app.run(host='0.0.0.0', port=5000, debug=False)
 
     def print_question(self):
         while True:
@@ -169,7 +320,9 @@ class DePINed:
             response.raise_for_status()
             return True
         except Exception as e:
-            self.print_message(email, proxy, Fore.RED, f"Connection Not 200 OK: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+            error_msg = f"Connection Not 200 OK: {str(e)}"
+            self.print_message(email, proxy, Fore.RED, f"{error_msg}")
+            await self.send_failure_notification("Connection Failed", error_msg, email)
             return None
 
     async def user_epoch_earning(self, email: str, proxy=None, retries=5):
@@ -186,7 +339,9 @@ class DePINed:
             except Exception as e:
                 if attempt < retries - 1:
                     continue
-                self.print_message(email, proxy, Fore.RED, f"GET Earning Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+                error_msg = f"GET Earning Failed: {str(e)}"
+                self.print_message(email, proxy, Fore.RED, error_msg)
+                await self.send_failure_notification("Earning Fetch Failed", error_msg, email)
                 return None
             
     async def user_send_ping(self, email: str, proxy=None, retries=5):
@@ -206,7 +361,9 @@ class DePINed:
             except Exception as e:
                 if attempt < retries - 1:
                     continue
-                self.print_message(email, proxy, Fore.RED, f"PING Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+                error_msg = f"PING Failed: {str(e)}"
+                self.print_message(email, proxy, Fore.RED, error_msg)
+                await self.send_failure_notification("Ping Failed", error_msg, email)
                 return None
             
     async def process_check_connection(self, email: str, use_proxy: bool, rotate_proxy: bool):
@@ -251,6 +408,7 @@ class DePINed:
 
             ping = await self.user_send_ping(email, proxy)
             if ping and ping.get("message") == "Widget connection status updated":
+                self.total_pings_sent += 1
                 self.print_message(email, proxy, Fore.GREEN, "PING Success")
 
             print(
@@ -285,9 +443,14 @@ class DePINed:
 
             self.clear_terminal()
             self.welcome()
+            self.active_accounts = len([t for t in tokens if t and "@" in t.get("Email", "") and t.get("accessToken", "")])
             self.log(
                 f"{Fore.GREEN + Style.BRIGHT}Account's Total: {Style.RESET_ALL}"
                 f"{Fore.WHITE + Style.BRIGHT}{len(tokens)}{Style.RESET_ALL}"
+            )
+            self.log(
+                f"{Fore.GREEN + Style.BRIGHT}Active Accounts: {Style.RESET_ALL}"
+                f"{Fore.WHITE + Style.BRIGHT}{self.active_accounts}{Style.RESET_ALL}"
             )
 
             if use_proxy:
@@ -295,7 +458,30 @@ class DePINed:
 
             self.log(f"{Fore.CYAN + Style.BRIGHT}={Style.RESET_ALL}"*75)
 
-            tasks = []
+            # Start web server in a separate thread
+            web_thread = threading.Thread(target=self.start_web_server, daemon=True)
+            web_thread.start()
+            self.log(f"{Fore.GREEN}Web dashboard started at http://0.0.0.0:5000{Style.RESET_ALL}")
+            
+            # Send initial startup notification
+            startup_message = f"""
+🚀 <b>DePINed Bot Started!</b>
+
+📅 <b>Start time:</b> {self.start_time.strftime('%Y-%m-%d %H:%M:%S %Z')}
+📧 <b>Active accounts:</b> {self.active_accounts}
+🌐 <b>Web dashboard:</b> Available
+📡 <b>Telegram notifications:</b> Enabled
+
+Bot is now running and will send reports every 5 minutes.
+            """
+            await self.send_telegram_message(self.ADMIN_CHAT_ID, startup_message)
+            await self.send_telegram_message(self.USER_CHAT_ID, startup_message)
+            await self.send_telegram_message(self.GROUP_ID, startup_message)
+            
+            tasks = [
+                asyncio.create_task(self.send_uptime_report())
+            ]
+            
             for idx, account in enumerate(tokens, start=1):
                 if account:
                     email = account["Email"]
@@ -330,7 +516,9 @@ class DePINed:
             await asyncio.gather(*tasks)
 
         except Exception as e:
-            self.log(f"{Fore.RED+Style.BRIGHT}Error: {e}{Style.RESET_ALL}")
+            error_msg = f"System Error: {str(e)}"
+            self.log(f"{Fore.RED+Style.BRIGHT}{error_msg}{Style.RESET_ALL}")
+            await self.send_failure_notification("System Failure", error_msg)
             raise e
 
 if __name__ == "__main__":

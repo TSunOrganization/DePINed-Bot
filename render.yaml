@@ -1,0 +1,18 @@
+
+services:
+  - type: web
+    name: depined-bot-dashboard
+    env: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python app.py"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
+  - type: worker
+    name: depined-bot
+    env: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python bot.py"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
