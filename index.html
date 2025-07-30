@@ -4,9 +4,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DePINed Bot Dashboard</title>
+    <title>TSun DePINed Bot - Enhanced Dashboard</title>
     <link rel="stylesheet" href="styles.css">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <div class="container">
@@ -14,17 +15,18 @@
             <div class="logo">
                 <i class="fas fa-robot"></i>
                 <h1>TSun DePINed Bot</h1>
+                <span class="version">v2.0 Enhanced</span>
             </div>
             <div class="status-badge">
-                <i class="fas fa-circle status-dot"></i>
-                <span>Active</span>
+                <i class="fas fa-circle status-dot" id="status-dot"></i>
+                <span id="status-text">Loading...</span>
             </div>
         </header>
 
         <main class="main-content">
             <div class="hero-section">
-                <h2>🤖 Bot Status Dashboard</h2>
-                <p>Your DePINed automation bot is running smoothly</p>
+                <h2>🤖 Enhanced Bot Dashboard</h2>
+                <p>Real-time monitoring with advanced analytics</p>
             </div>
 
             <div class="stats-grid">
@@ -34,7 +36,7 @@
                     </div>
                     <div class="stat-content">
                         <h3>Status</h3>
-                        <p class="stat-value running">Running</p>
+                        <p class="stat-value running" id="bot-status">Running</p>
                     </div>
                 </div>
 
@@ -44,127 +46,244 @@
                     </div>
                     <div class="stat-content">
                         <h3>Uptime</h3>
-                        <p class="stat-value" id="uptime">24/7</p>
+                        <p class="stat-value" id="uptime">Loading...</p>
                     </div>
                 </div>
 
                 <div class="stat-card">
                     <div class="stat-icon">
-                        <i class="fas fa-wifi"></i>
+                        <i class="fas fa-users"></i>
                     </div>
                     <div class="stat-content">
-                        <h3>Connection</h3>
-                        <p class="stat-value connected">Connected</p>
+                        <h3>Active Accounts</h3>
+                        <p class="stat-value" id="active-accounts">0</p>
                     </div>
                 </div>
 
                 <div class="stat-card">
                     <div class="stat-icon">
-                        <i class="fas fa-sync-alt"></i>
+                        <i class="fas fa-satellite-dish"></i>
                     </div>
                     <div class="stat-content">
-                        <h3>Last Ping</h3>
-                        <p class="stat-value" id="last-check">Just now</p>
+                        <h3>Total Pings</h3>
+                        <p class="stat-value" id="total-pings">0</p>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-coins"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>Total Earnings</h3>
+                        <p class="stat-value" id="total-earnings">0.0000 PTS</p>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-percentage"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>Success Rate</h3>
+                        <p class="stat-value" id="success-rate">100%</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="analytics-section">
+                <div class="analytics-card">
+                    <h3><i class="fas fa-chart-line"></i> Performance Analytics</h3>
+                    <div class="chart-container">
+                        <canvas id="performanceChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="analytics-card">
+                    <h3><i class="fas fa-network-wired"></i> Proxy Health</h3>
+                    <div class="proxy-list" id="proxy-health">
+                        <div class="loading">Loading proxy data...</div>
                     </div>
                 </div>
             </div>
 
             <div class="info-section">
                 <div class="info-card">
-                    <h3><i class="fas fa-info-circle"></i> Bot Information</h3>
+                    <h3><i class="fas fa-info-circle"></i> System Information</h3>
                     <ul>
                         <li><strong>Service:</strong> DePINed Network</li>
-                        <li><strong>Mode:</strong> Multi-account automation</li>
+                        <li><strong>Mode:</strong> Enhanced Multi-account</li>
                         <li><strong>Ping Interval:</strong> 90 seconds</li>
-                        <li><strong>Proxy Support:</strong> Enabled</li>
+                        <li><strong>Reports:</strong> Every 5 minutes</li>
+                        <li><strong>Analytics:</strong> Real-time enabled</li>
+                        <li><strong>Started:</strong> <span id="start-time">Loading...</span></li>
                     </ul>
                 </div>
 
                 <div class="info-card">
-                    <h3><i class="fas fa-chart-line"></i> Features</h3>
-                    <ul>
-                        <li>✅ Auto earnings tracking</li>
-                        <li>✅ Automatic ping system</li>
-                        <li>✅ Proxy rotation support</li>
-                        <li>✅ Multi-account management</li>
-                        <li>✅ 24/7 uptime monitoring</li>
-                    </ul>
+                    <h3><i class="fas fa-exclamation-triangle"></i> Recent Errors</h3>
+                    <div class="error-log" id="error-log">
+                        <div class="loading">Loading error data...</div>
+                    </div>
                 </div>
             </div>
 
-            <div class="endpoints-section">
-                <h3><i class="fas fa-link"></i> API Endpoints</h3>
-                <div class="endpoints-grid">
-                    <div class="endpoint-card">
-                        <span class="method get">GET</span>
-                        <code>/health</code>
-                        <span class="description">Health check</span>
-                    </div>
-                    <div class="endpoint-card">
-                        <span class="method get">GET</span>
-                        <code>/ping</code>
-                        <span class="description">Ping response</span>
-                    </div>
-                    <div class="endpoint-card">
-                        <span class="method get">GET</span>
-                        <code>/status</code>
-                        <span class="description">Detailed status</span>
-                    </div>
-                </div>
+            <div class="footer-info">
+                <p><i class="fas fa-shield-alt"></i> Secure • <i class="fas fa-sync-alt"></i> Auto-updating • <i class="fas fa-bell"></i> Telegram notifications enabled</p>
+                <p class="last-update">Last updated: <span id="last-update">Never</span></p>
             </div>
         </main>
-
-        <footer class="footer">
-            <p>&copy; 2025 DePINed Bot - Automated Network Participation</p>
-            <p>Credits To | <a href="https://github.com/vonssy/DePINed-BOT" target="_blank">Vonssy GitHub</a> | <a href="https://github.com/TSunOrganization/DePINed-Bot" target="_blank">TSun GitHub</a> </p>
-        </footer>
     </div>
 
     <script>
-        // Update timestamp
-        function updateTimestamp() {
-            const now = new Date();
-            document.getElementById('last-check').textContent = now.toLocaleTimeString();
+        let performanceChart;
+        
+        async function fetchData() {
+            try {
+                const [uptimeRes, analyticsRes, logsRes] = await Promise.all([
+                    fetch('/uptime-data'),
+                    fetch('/analytics'),
+                    fetch('/logs')
+                ]);
+                
+                const uptimeData = await uptimeRes.json();
+                const analyticsData = await analyticsRes.json();
+                const logsData = await logsRes.json();
+                
+                updateUI(uptimeData, analyticsData, logsData);
+            } catch (error) {
+                console.error('Failed to fetch data:', error);
+                document.getElementById('status-text').textContent = 'Connection Error';
+                document.getElementById('status-dot').className = 'fas fa-circle status-dot error';
+            }
         }
-
-        // Update uptime from server with real data
-        function updateUptime() {
-            fetch('/uptime-data')
-                .then(response => response.json())
-                .then(data => {
-                    const { days, hours, minutes, seconds } = data;
-                    if (days > 0) {
-                        document.getElementById('uptime').textContent = `${days}d ${hours}h ${minutes}m ${seconds}s`;
-                    } else if (hours > 0) {
-                        document.getElementById('uptime').textContent = `${hours}h ${minutes}m ${seconds}s`;
-                    } else {
-                        document.getElementById('uptime').textContent = `${minutes}m ${seconds}s`;
+        
+        function updateUI(uptime, analytics, logs) {
+            // Update uptime
+            document.getElementById('uptime').textContent = 
+                `${uptime.days}d ${uptime.hours}h ${uptime.minutes}m`;
+            
+            // Update stats
+            document.getElementById('active-accounts').textContent = uptime.active_accounts;
+            document.getElementById('total-pings').textContent = uptime.total_pings.toLocaleString();
+            document.getElementById('total-earnings').textContent = 
+                `${analytics.total_earnings.toFixed(4)} PTS`;
+            document.getElementById('start-time').textContent = uptime.start_time;
+            
+            // Calculate and display success rate
+            const totalErrors = analytics.recent_errors || 0;
+            const successRate = Math.max(0, 100 - (totalErrors * 2));
+            document.getElementById('success-rate').textContent = `${successRate.toFixed(1)}%`;
+            
+            // Update status based on health
+            if (totalErrors < 5) {
+                document.getElementById('status-text').textContent = 'Excellent';
+                document.getElementById('status-dot').className = 'fas fa-circle status-dot running';
+            } else if (totalErrors < 15) {
+                document.getElementById('status-text').textContent = 'Good';
+                document.getElementById('status-dot').className = 'fas fa-circle status-dot warning';
+            } else {
+                document.getElementById('status-text').textContent = 'Issues';
+                document.getElementById('status-dot').className = 'fas fa-circle status-dot error';
+            }
+            
+            // Update proxy health
+            updateProxyHealth(analytics);
+            
+            // Update error log
+            updateErrorLog(logs);
+            
+            // Update performance chart
+            updatePerformanceChart(analytics);
+            
+            // Update last update time
+            document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+        }
+        
+        function updateProxyHealth(analytics) {
+            const proxyContainer = document.getElementById('proxy-health');
+            const healthyProxies = analytics.healthy_proxies || 0;
+            const blacklistedProxies = analytics.blacklisted_proxies || 0;
+            
+            proxyContainer.innerHTML = `
+                <div class="proxy-stat">
+                    <span class="proxy-label">Healthy:</span>
+                    <span class="proxy-value healthy">${healthyProxies}</span>
+                </div>
+                <div class="proxy-stat">
+                    <span class="proxy-label">Blacklisted:</span>
+                    <span class="proxy-value error">${blacklistedProxies}</span>
+                </div>
+                <div class="proxy-stat">
+                    <span class="proxy-label">Avg Response:</span>
+                    <span class="proxy-value">${(analytics.avg_response_time || 0).toFixed(2)}s</span>
+                </div>
+            `;
+        }
+        
+        function updateErrorLog(logs) {
+            const errorContainer = document.getElementById('error-log');
+            if (logs.recent_errors && logs.recent_errors.length > 0) {
+                const recentErrors = logs.recent_errors.slice(-5);
+                errorContainer.innerHTML = recentErrors.map(error => 
+                    `<div class="error-item">
+                        <span class="error-type">${error.type}</span>
+                        <span class="error-count">${error.count}x</span>
+                    </div>`
+                ).join('');
+            } else {
+                errorContainer.innerHTML = '<div class="no-errors">No recent errors 🎉</div>';
+            }
+        }
+        
+        function updatePerformanceChart(analytics) {
+            const ctx = document.getElementById('performanceChart').getContext('2d');
+            
+            if (performanceChart) {
+                performanceChart.destroy();
+            }
+            
+            performanceChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Successful', 'Failed'],
+                    datasets: [{
+                        data: [
+                            Math.max(0, 100 - (analytics.recent_errors || 0)),
+                            analytics.recent_errors || 0
+                        ],
+                        backgroundColor: ['#4CAF50', '#f44336'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                color: '#fff',
+                                font: { size: 12 }
+                            }
+                        }
                     }
-                })
-                .catch(error => {
-                    console.error('Error fetching uptime:', error);
-                    // Fallback display
-                    document.getElementById('uptime').textContent = 'Loading...';
-                });
+                }
+            });
         }
-
-        // Update every second for real-time seconds display
-        setInterval(() => {
-            updateTimestamp();
-            updateUptime();
-        }, 1000);
-
-        // Initial updates
-        updateTimestamp();
-        updateUptime();
-
-        // Add pulse animation to status dot
-        setInterval(() => {
-            document.querySelector('.status-dot').style.animation = 'pulse 1s ease-in-out';
-            setTimeout(() => {
-                document.querySelector('.status-dot').style.animation = '';
-            }, 1000);
-        }, 3000);
+        
+        // Initialize and start auto-refresh
+        fetchData();
+        setInterval(fetchData, 5000); // Update every 5 seconds
+        
+        // Add some visual flair
+        document.addEventListener('DOMContentLoaded', function() {
+            const cards = document.querySelectorAll('.stat-card, .analytics-card, .info-card');
+            cards.forEach((card, index) => {
+                card.style.animationDelay = `${index * 0.1}s`;
+                card.classList.add('fade-in');
+            });
+        });
     </script>
 </body>
 </html>
