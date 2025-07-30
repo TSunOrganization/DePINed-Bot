@@ -10,3 +10,7 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.4
+      - key: PROXY_CHOICE
+        value: "2"  # 1=Free Proxyscrape, 2=Private, 3=No Proxy
+      - key: ROTATE_PROXY
+        value: "y"  # y=Yes, n=No

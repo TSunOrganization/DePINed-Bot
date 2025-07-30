@@ -204,35 +204,27 @@ class DePINed:
                 self.log(f"{Fore.RED + Style.BRIGHT}Failed to send status report: {e}{Style.RESET_ALL}")
 
     def print_question(self):
-        while True:
-            try:
-                print(f"{Fore.WHITE + Style.BRIGHT}1. Run With Free Proxyscrape Proxy{Style.RESET_ALL}")
-                print(f"{Fore.WHITE + Style.BRIGHT}2. Run With Private Proxy{Style.RESET_ALL}")
-                print(f"{Fore.WHITE + Style.BRIGHT}3. Run Without Proxy{Style.RESET_ALL}")
-                choose = int(input(f"{Fore.BLUE + Style.BRIGHT}Choose [1/2/3] -> {Style.RESET_ALL}").strip())
-
-                if choose in [1, 2, 3]:
-                    proxy_type = (
-                        "With Free Proxyscrape" if choose == 1 else 
-                        "With Private" if choose == 2 else 
-                        "Without"
-                    )
-                    print(f"{Fore.GREEN + Style.BRIGHT}Run {proxy_type} Proxy Selected.{Style.RESET_ALL}")
-                    break
-                else:
-                    print(f"{Fore.RED + Style.BRIGHT}Please enter either 1, 2 or 3.{Style.RESET_ALL}")
-            except ValueError:
-                print(f"{Fore.RED + Style.BRIGHT}Invalid input. Enter a number (1, 2 or 3).{Style.RESET_ALL}")
-
-        rotate = False
+        # Use environment variables for deployment configuration
+        import os
+        
+        # Get proxy choice from environment variable (default to 3 - no proxy)
+        choose = int(os.getenv('PROXY_CHOICE', '3'))
+        
+        # Get rotate proxy setting from environment variable (default to False)
+        rotate = os.getenv('ROTATE_PROXY', 'n').lower() == 'y'
+        
+        if choose not in [1, 2, 3]:
+            choose = 3  # Default to no proxy if invalid value
+            
+        proxy_type = (
+            "With Free Proxyscrape" if choose == 1 else 
+            "With Private" if choose == 2 else 
+            "Without"
+        )
+        
+        self.log(f"{Fore.GREEN + Style.BRIGHT}Run {proxy_type} Proxy Selected (Auto-configured).{Style.RESET_ALL}")
         if choose in [1, 2]:
-            while True:
-                rotate = input(f"{Fore.BLUE + Style.BRIGHT}Rotate Invalid Proxy? [y/n] -> {Style.RESET_ALL}").strip()
-                if rotate in ["y", "n"]:
-                    rotate = rotate == "y"
-                    break
-                else:
-                    print(f"{Fore.RED + Style.BRIGHT}Invalid input. Enter 'y' or 'n'.{Style.RESET_ALL}")
+            self.log(f"{Fore.GREEN + Style.BRIGHT}Rotate Invalid Proxy: {'Yes' if rotate else 'No'}{Style.RESET_ALL}")
 
         return choose, rotate
     
