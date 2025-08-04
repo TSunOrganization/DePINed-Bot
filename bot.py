@@ -184,7 +184,7 @@ class DePINed:
         """Send live status report every minute"""
         while True:
             try:
-                await asyncio.sleep(60)  # Wait 1 minute
+                await asyncio.sleep(600)  # Wait 10 minute
                 
                 uptime = self.get_uptime_string()
                 current_time = datetime.now().astimezone(wib).strftime('%Y-%m-%d %H:%M:%S %Z')
