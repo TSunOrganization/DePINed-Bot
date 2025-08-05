@@ -1,5 +1,5 @@
 # ==============================================================================
-# TSun DePINed Bot - Final Integrated Version (v4.5 - Notification Schedule Update)
+# TSun DePINed Bot - Final Integrated Version (v4.6 - Render JobQueue Fix)
 # Author: ༯𝙎ค૯𝙀𝘿✘🫀
 # Features: Telegram Bot, Live Web Dashboard, Gamification & More
 # ==============================================================================
@@ -22,7 +22,7 @@ from dotenv import load_dotenv
 from curl_cffi import requests
 from fake_useragent import FakeUserAgent
 from telegram import Update, Bot
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, ContextTypes, JobQueue
 from telegram.constants import ParseMode
 
 # --- 1. BASIC SETUP & INITIALIZATION ---
@@ -78,7 +78,7 @@ class DePINed:
     def __init__(self, application: Application) -> None:
         self.app = application
         self.bot: Bot = self.app.bot
-        self.job_queue = self.app.job_queue
+        self.job_queue = self.app.job_queue # This will now be correctly initialized
         self.BASE_API = "https://api.depined.org/api"
         self.HEADERS = {"User-Agent": FakeUserAgent().random}
         self.access_tokens = {}
@@ -107,21 +107,17 @@ class DePINed:
         email = context.job.data['email']
         self.log_print(f"Running job for {email}")
         try:
-            # Placeholder for earning and ping logic
             earning_response = {"code": 200, "data": {"epoch": 32, "earnings": random.randint(1000, 50000)}}
             if earning_response and earning_response.get("code") == 200:
                 epoch = earning_response.get("data", {}).get("epoch", "N/A")
                 balance = earning_response.get("data", {}).get("earnings", 0)
                 async with self.earnings_lock:
                     self.account_earnings[email] = f"Epoch {epoch} - Earning: {balance:.2f} PTS"
-            
             self.total_pings_sent += 1
         except Exception as e:
             self.log_print(f"{Fore.RED}Error processing job for {email}: {e}")
 
-    # ===== THIS IS THE NEW SCHEDULED FUNCTION =====
     async def schedule_status_report(self, context: ContextTypes.DEFAULT_TYPE):
-        """Sends the status report to all chats."""
         self.log_print(f"{Fore.BLUE}Sending scheduled status report...")
         report = await self.get_status_report_text()
         await self.send_telegram_message(report)
@@ -147,12 +143,11 @@ class DePINed:
         uptime_str = f"{uptime.days}d {uptime.seconds//3600}h {(uptime.seconds%3600)//60}m"
         current_time_str = datetime.now(wib).strftime('%Y-%m-%d %H:%M:%S %Z')
         start_time_str = self.bot_start_time.strftime('%Y-%m-%d %H:%M:%S %Z')
-        
-        return f"🤖 DePINed Bot Live Status 🤖\n\n🔗 Total Proxies: {len(self.proxies) if hasattr(self, 'proxies') else 0}\n⏱️ Current Uptime: {uptime_str}\n📧 Active Accounts: {self.active_accounts}\n📊 Total Pings Sent: {self.total_pings_sent}\n📅 Bot Start Time: {start_time_str}\n🕐 Current Time: {current_time_str}"
+        return f"🤖 DePINed Bot Live Status 🤖\n\n🔗 Total Proxies: {len(self.proxies) if hasattr(self, 'proxies') else 0}\n⏱️ Uptime: {uptime_str}\n📧 Accounts: {self.active_accounts}\n📊 Pings: {self.total_pings_sent}\n📅 Start: {start_time_str}\n🕐 Current: {current_time_str}"
 
     async def get_earnings_report_text(self) -> str:
         async with self.earnings_lock:
-            if not self.account_earnings: return "💰 No earnings data has been recorded yet."
+            if not self.account_earnings: return "💰 No earnings data recorded yet."
             message = "💰💎 <b>Earnings & Levels</b> 💎💰\n\n"
             for email, info in sorted(self.account_earnings.items()):
                 try: balance = float(info.split(':')[-1].strip().split(' ')[0])
@@ -161,35 +156,26 @@ class DePINed:
                 message += f"👤 <code>{email.split('@')[0]}</code>: {info} {level}\n"
             return message
 
-    # --- COMMAND HANDLERS ---
     async def help_command(self, u: Update, c: ContextTypes.DEFAULT_TYPE):
-        help_text = "👋 <b>Available Commands</b>\n\n/help - Yeh help message.\n/status - Bot ka live status.\n/earnings - Latest earnings report."
+        help_text = "👋 <b>Commands</b>\n\n/help - Help\n/status - Live Status\n/earnings - Latest Earnings"
         await u.message.reply_html(help_text)
         
     async def status_command(self, u: Update, c: ContextTypes.DEFAULT_TYPE): await u.message.reply_html(await self.get_status_report_text())
     async def earnings_command(self, u: Update, c: ContextTypes.DEFAULT_TYPE): await u.message.reply_html(await self.get_earnings_report_text())
 
-    # --- MAIN BACKGROUND TASK SCHEDULER ---
     def start_background_tasks(self):
-        self.log_print(f"{Fore.GREEN}Scheduling all background jobs...")
+        self.log_print(f"{Fore.GREEN}Scheduling background jobs...")
         accounts = self.load_accounts()
         self.active_accounts = len(accounts)
         if not accounts: self.log_print(f"{Fore.YELLOW}No accounts found."); return
 
-        # Schedule a repeating job for each account's ping/earning check
         for account in accounts:
             email = account.get("Email")
             if email:
-                # This job runs the main logic for each account
                 self.job_queue.run_repeating(self.process_single_account, interval=90, first=5, data={'email': email})
         
-        # ===== SCHEDULE UPDATE =====
-        # 1. Schedule the repeating STATUS report every 90 seconds
         self.job_queue.run_repeating(self.schedule_status_report, interval=90, first=90)
-        
-        # 2. Earnings report is NO LONGER scheduled automatically. It only works on /earnings command.
-        
-        self.log_print(f"{Fore.GREEN}All jobs are scheduled. Status report every 90s.")
+        self.log_print(f"{Fore.GREEN}All jobs are scheduled.")
 
 # --- 4. APPLICATION ENTRY POINT ---
 def run_flask():
@@ -198,9 +184,14 @@ def run_flask():
 
 def main():
     TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-    if not TOKEN: logger.error("FATAL: TELEGRAM_BOT_TOKEN not found!"); return
+    if not TOKEN: logger.error("FATAL: TOKEN not found!"); return
 
-    application = Application.builder().token(TOKEN).build()
+    # ===== THIS IS THE MAIN FIX =====
+    # Create the JobQueue instance
+    job_queue = JobQueue()
+    # Build the application and pass the job_queue to it
+    application = Application.builder().token(TOKEN).job_queue(job_queue).build()
+
     depined_bot = DePINed(application)
 
     application.add_handler(CommandHandler("help", depined_bot.help_command))
@@ -209,7 +200,7 @@ def main():
     
     depined_bot.start_background_tasks()
     
-    print(f"{Fore.GREEN}Telegram bot is now polling for commands...{Style.RESET_ALL}")
+    print(f"{Fore.GREEN}Telegram bot is now polling...{Style.RESET_ALL}")
     application.run_polling()
 
 if __name__ == "__main__":
@@ -217,7 +208,7 @@ if __name__ == "__main__":
     
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
-    print(f"{Fore.CYAN}Web server started in a background thread.{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}Web server started.{Style.RESET_ALL}")
 
     print(f"{Fore.CYAN}Starting Telegram bot...{Style.RESET_ALL}")
     main()
