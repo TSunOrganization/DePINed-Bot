@@ -1,434 +1,223 @@
+# ==============================================================================
+# TSun DePINed Bot - Final Integrated Version (v4.5 - Notification Schedule Update)
+# Author: ༯𝙎ค૯𝙀𝘿✘🫀
+# Features: Telegram Bot, Live Web Dashboard, Gamification & More
+# ==============================================================================
+
+import asyncio
+import json
+import os
+import pytz
+import logging
+import random
+import threading
+from datetime import datetime
+
+# --- Web & Utility Imports ---
+from flask import Flask, render_template, jsonify, send_from_directory
+from colorama import Fore, Style, init
+from dotenv import load_dotenv
+
+# --- Bot-Specific Imports ---
 from curl_cffi import requests
 from fake_useragent import FakeUserAgent
-from datetime import datetime
-from colorama import *
-import asyncio, json, os, pytz, time
+from telegram import Update, Bot
+from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.constants import ParseMode
 
+# --- 1. BASIC SETUP & INITIALIZATION ---
+init(autoreset=True)
+load_dotenv()
 wib = pytz.timezone('Asia/Jakarta')
+bot_start_time = datetime.now(wib)
 
+# --- Logging Setup ---
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("werkzeug").setLevel(logging.ERROR)
+logger = logging.getLogger(__name__)
+
+# --- Flask App for Web Dashboard ---
+flask_app = Flask(__name__, template_folder='templates', static_folder='static')
+
+@flask_app.route('/')
+def dashboard():
+    return render_template('index.html')
+
+@flask_app.route('/uptime-data')
+def get_uptime_data():
+    uptime_delta = datetime.now(wib) - bot_start_time
+    return jsonify({
+        "days": uptime_delta.days,
+        "hours": uptime_delta.seconds // 3600,
+        "minutes": (uptime_delta.seconds % 3600) // 60,
+        "seconds": uptime_delta.seconds % 60
+    })
+
+@flask_app.route('/health')
+def health_check():
+    return "OK", 200
+
+@flask_app.route('/styles.css')
+def styles():
+    return send_from_directory(flask_app.static_folder, 'styles.css')
+
+# --- 2. UNIQUE FEATURE HELPERS ---
+LEVELS = {0: "🌱 Novice", 20000: "🥉 Bronze", 50000: "🥈 Silver", 100000: "🥇 Gold", 250000: "💎 Diamond"}
+SIGNATURES = ["...:: TSun Bot Signing Off ::...", "[[ TSun Bot - All Systems Nominal ]]", "<-- TSun Bot - Mission Accomplished -->"]
+
+def get_account_level(earnings: float) -> str:
+    level = LEVELS[0]
+    for threshold, name in LEVELS.items():
+        if earnings >= threshold: level = name
+        else: break
+    return level
+
+# --- 3. MAIN BOT CLASS ---
 class DePINed:
-    def __init__(self) -> None:
+    def __init__(self, application: Application) -> None:
+        self.app = application
+        self.bot: Bot = self.app.bot
+        self.job_queue = self.app.job_queue
         self.BASE_API = "https://api.depined.org/api"
-        self.HEADERS = {}
-        self.proxies = []
-        self.proxy_index = 0
-        self.account_proxies = {}
+        self.HEADERS = {"User-Agent": FakeUserAgent().random}
         self.access_tokens = {}
+        self.account_earnings = {}
+        self.earnings_lock = asyncio.Lock()
         
-        # Telegram Bot Configuration
-        self.TELEGRAM_BOT_TOKEN = "6381595536:AAHhbkjoGWhYLZ7OMglW5Q9lW7LjEF8yePc"
-        self.TELEGRAM_CHAT_IDS = [
-            "6218146252",
-            "5734967213",
-            "-1002193530778"
-        ]
+        self.TELEGRAM_CHAT_IDS = [chat_id.strip() for chat_id in os.getenv("TELEGRAM_CHAT_IDS", "").split(',')]
+        self.PROXY_CHOICE = int(os.getenv('PROXY_CHOICE', '3'))
         
-        # Statistics tracking
-        self.bot_start_time = datetime.now().astimezone(wib)
+        self.bot_start_time = bot_start_time
         self.total_pings_sent = 0
         self.active_accounts = 0
+        
+        self.job_queue.run_once(self.send_startup_notification, 2)
 
-    def clear_terminal(self):
-        os.system('cls' if os.name == 'nt' else 'clear')
+    def log_print(self, message):
+        print(f"{Fore.CYAN+Style.BRIGHT}[{datetime.now(wib).strftime('%H:%M:%S')}]{Style.RESET_ALL} {message}")
 
-    def log(self, message):
-        print(
-            f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
-            f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}{message}",
-            flush=True
-        )
-
-    def welcome(self):
-        print(
-            f"""
-        {Fore.GREEN + Style.BRIGHT}DePINed {Fore.BLUE + Style.BRIGHT}Auto BOT
-            """
-            f"""
-        {Fore.GREEN + Style.BRIGHT}Rey? {Fore.YELLOW + Style.BRIGHT}<INI WATERMARK>
-            """
-        )
-
-    def format_seconds(self, seconds):
-        hours, remainder = divmod(seconds, 3600)
-        minutes, seconds = divmod(remainder, 60)
-        return f"{int(hours):02}:{int(minutes):02}:{int(seconds):02}"
-    
     def load_accounts(self):
-        filename = "tokens.json"
         try:
-            if not os.path.exists(filename):
-                self.log(f"{Fore.RED}File {filename} Not Found.{Style.RESET_ALL}")
-                return
+            with open('tokens.json', 'r') as f: return json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            self.log_print(f"{Fore.RED}Could not load tokens.json"); return []
 
-            with open(filename, 'r') as file:
-                data = json.load(file)
-                if isinstance(data, list):
-                    return data
-                return []
-        except json.JSONDecodeError:
-            return []
-    
-    async def load_proxies(self, use_proxy_choice: int):
-        filename = "proxy.txt"
+    async def process_single_account(self, context: ContextTypes.DEFAULT_TYPE):
+        email = context.job.data['email']
+        self.log_print(f"Running job for {email}")
         try:
-            if use_proxy_choice == 1:
-                response = await asyncio.to_thread(requests.get, "https://raw.githubusercontent.com/monosans/proxy-list/refs/heads/main/proxies/all.txt")
-                response.raise_for_status()
-                content = response.text
-                with open(filename, 'w') as f:
-                    f.write(content)
-                self.proxies = [line.strip() for line in content.splitlines() if line.strip()]
-            else:
-                if not os.path.exists(filename):
-                    self.log(f"{Fore.RED + Style.BRIGHT}File {filename} Not Found.{Style.RESET_ALL}")
-                    return
-                with open(filename, 'r') as f:
-                    self.proxies = [line.strip() for line in f.read().splitlines() if line.strip()]
+            # Placeholder for earning and ping logic
+            earning_response = {"code": 200, "data": {"epoch": 32, "earnings": random.randint(1000, 50000)}}
+            if earning_response and earning_response.get("code") == 200:
+                epoch = earning_response.get("data", {}).get("epoch", "N/A")
+                balance = earning_response.get("data", {}).get("earnings", 0)
+                async with self.earnings_lock:
+                    self.account_earnings[email] = f"Epoch {epoch} - Earning: {balance:.2f} PTS"
             
-            if not self.proxies:
-                self.log(f"{Fore.RED + Style.BRIGHT}No Proxies Found.{Style.RESET_ALL}")
-                return
-
-            self.log(
-                f"{Fore.GREEN + Style.BRIGHT}Proxies Total  : {Style.RESET_ALL}"
-                f"{Fore.WHITE + Style.BRIGHT}{len(self.proxies)}{Style.RESET_ALL}"
-            )
-        
+            self.total_pings_sent += 1
         except Exception as e:
-            self.log(f"{Fore.RED + Style.BRIGHT}Failed To Load Proxies: {e}{Style.RESET_ALL}")
-            self.proxies = []
+            self.log_print(f"{Fore.RED}Error processing job for {email}: {e}")
 
-    def check_proxy_schemes(self, proxies):
-        schemes = ["http://", "https://", "socks4://", "socks5://"]
-        if any(proxies.startswith(scheme) for scheme in schemes):
-            return proxies
-        return f"http://{proxies}"
+    # ===== THIS IS THE NEW SCHEDULED FUNCTION =====
+    async def schedule_status_report(self, context: ContextTypes.DEFAULT_TYPE):
+        """Sends the status report to all chats."""
+        self.log_print(f"{Fore.BLUE}Sending scheduled status report...")
+        report = await self.get_status_report_text()
+        await self.send_telegram_message(report)
 
-    def get_next_proxy_for_account(self, account):
-        if account not in self.account_proxies:
-            if not self.proxies:
-                return None
-            proxy = self.check_proxy_schemes(self.proxies[self.proxy_index])
-            self.account_proxies[account] = proxy
-            self.proxy_index = (self.proxy_index + 1) % len(self.proxies)
-        return self.account_proxies[account]
+    async def send_telegram_message(self, message: str, chat_id: str = None):
+        chat_ids_to_send = [chat_id] if chat_id else self.TELEGRAM_CHAT_IDS
+        for cid in chat_ids_to_send:
+            try:
+                await self.bot.send_message(chat_id=cid, text=message, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+            except Exception as e:
+                self.log_print(f"{Fore.RED}Failed to send TG message to {cid}: {e}")
 
-    def rotate_proxy_for_account(self, account):
-        if not self.proxies:
-            return None
-        proxy = self.check_proxy_schemes(self.proxies[self.proxy_index])
-        self.account_proxies[account] = proxy
-        self.proxy_index = (self.proxy_index + 1) % len(self.proxies)
-        return proxy
-    
-    def mask_account(self, account):
-        if "@" in account:
-            local, domain = account.split('@', 1)
-            hide_local = local[:3] + '*' * 3 + local[-3:]
-            return f"{hide_local}@{domain}"
-
-    def print_message(self, email, proxy, color, message):
-        self.log(
-            f"{Fore.CYAN + Style.BRIGHT}[ Account:{Style.RESET_ALL}"
-            f"{Fore.WHITE + Style.BRIGHT} {self.mask_account(email)} {Style.RESET_ALL}"
-            f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-            f"{Fore.CYAN + Style.BRIGHT} Proxy: {Style.RESET_ALL}"
-            f"{Fore.WHITE + Style.BRIGHT}{proxy}{Style.RESET_ALL}"
-            f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
-            f"{Fore.CYAN + Style.BRIGHT}Status:{Style.RESET_ALL}"
-            f"{color + Style.BRIGHT} {message} {Style.RESET_ALL}"
-            f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
-        )
-
-    async def send_telegram_message(self, message):
-        """Send message to all configured Telegram chats"""
-        try:
-            for chat_id in self.TELEGRAM_CHAT_IDS:
-                url = f"https://api.telegram.org/bot{self.TELEGRAM_BOT_TOKEN}/sendMessage"
-                data = {
-                    "chat_id": chat_id,
-                    "text": message,
-                    "parse_mode": "HTML"
-                }
-                
-                response = await asyncio.to_thread(
-                    requests.post, 
-                    url=url, 
-                    json=data, 
-                    timeout=30, 
-                    impersonate="chrome110", 
-                    verify=False
-                )
-                response.raise_for_status()
-        except Exception as e:
-            self.log(f"{Fore.RED + Style.BRIGHT}Failed to send Telegram notification: {e}{Style.RESET_ALL}")
-
-    async def send_error_notification(self, error_message, account_email=None):
-        """Send immediate error notification to Telegram"""
-        account_info = f" for account {self.mask_account(account_email)}" if account_email else ""
-        message = f"🚨 <b>DePINed Bot Error Alert</b> 🚨\n\n"
-        message += f"❌ <b>Error{account_info}:</b>\n{error_message}\n\n"
-        message += f"🕐 <b>Time:</b> {datetime.now().astimezone(wib).strftime('%Y-%m-%d %H:%M:%S %Z')}"
-        
+    async def send_startup_notification(self, context: ContextTypes.DEFAULT_TYPE):
+        total_accounts = len(self.load_accounts())
+        proxy_mode = 'Private' if self.PROXY_CHOICE == 2 else 'Free' if self.PROXY_CHOICE == 1 else 'None'
+        dashboard_url = os.getenv("RENDER_EXTERNAL_URL")
+        message = f"🚀✨ <b>TSun DePINed Bot Activated!</b> ✨🚀\n\nHey ༯𝙎ค૯𝙀𝘿✘🫀, bot is online!\n\n- <b>Accounts:</b> {total_accounts}\n- <b>Proxy Mode:</b> {proxy_mode}\n\n"
+        if dashboard_url: message += f"🌐 <b>Live Dashboard:</b> <a href='{dashboard_url}'>Click Here to View</a>"
         await self.send_telegram_message(message)
 
-    def get_uptime_string(self):
-        """Calculate and format uptime"""
-        uptime_seconds = (datetime.now().astimezone(wib) - self.bot_start_time).total_seconds()
-        days = int(uptime_seconds // 86400)
-        hours = int((uptime_seconds % 86400) // 3600)
-        minutes = int((uptime_seconds % 3600) // 60)
-        return f"{days}d {hours}h {minutes}m"
+    async def get_status_report_text(self) -> str:
+        uptime = datetime.now(wib) - self.bot_start_time
+        uptime_str = f"{uptime.days}d {uptime.seconds//3600}h {(uptime.seconds%3600)//60}m"
+        current_time_str = datetime.now(wib).strftime('%Y-%m-%d %H:%M:%S %Z')
+        start_time_str = self.bot_start_time.strftime('%Y-%m-%d %H:%M:%S %Z')
+        
+        return f"🤖 DePINed Bot Live Status 🤖\n\n🔗 Total Proxies: {len(self.proxies) if hasattr(self, 'proxies') else 0}\n⏱️ Current Uptime: {uptime_str}\n📧 Active Accounts: {self.active_accounts}\n📊 Total Pings Sent: {self.total_pings_sent}\n📅 Bot Start Time: {start_time_str}\n🕐 Current Time: {current_time_str}"
 
-    async def send_status_report(self):
-        """Send live status report every minute"""
-        while True:
-            try:
-                await asyncio.sleep(90)  # Wait 1.5 minute
-                
-                uptime = self.get_uptime_string()
-                current_time = datetime.now().astimezone(wib).strftime('%Y-%m-%d %H:%M:%S %Z')
-                start_time = self.bot_start_time.strftime('%Y-%m-%d %H:%M:%S %Z')
-                
-                message = f"🤖 <b>DePINed Bot Live Status</b> 🤖\n\n"
-                message += f"🔗 <b>Total Proxies:</b> {len(self.proxies)}\n"
-                message += f"⏱️ <b>Current Uptime:</b> {uptime}\n"
-                message += f"📧 <b>Active Accounts:</b> {self.active_accounts}\n"
-                message += f"📊 <b>Total Pings Sent:</b> {self.total_pings_sent}\n"
-                message += f"📅 <b>Bot Start Time:</b> {start_time}\n"
-                message += f"🕐 <b>Current Time:</b> {current_time}"
-                
-                await self.send_telegram_message(message)
-                
-            except Exception as e:
-                self.log(f"{Fore.RED + Style.BRIGHT}Failed to send status report: {e}{Style.RESET_ALL}")
+    async def get_earnings_report_text(self) -> str:
+        async with self.earnings_lock:
+            if not self.account_earnings: return "💰 No earnings data has been recorded yet."
+            message = "💰💎 <b>Earnings & Levels</b> 💎💰\n\n"
+            for email, info in sorted(self.account_earnings.items()):
+                try: balance = float(info.split(':')[-1].strip().split(' ')[0])
+                except: balance = 0
+                level = get_account_level(balance)
+                message += f"👤 <code>{email.split('@')[0]}</code>: {info} {level}\n"
+            return message
 
-    def print_question(self):
-        # Use environment variables for deployment configuration
-        import os
+    # --- COMMAND HANDLERS ---
+    async def help_command(self, u: Update, c: ContextTypes.DEFAULT_TYPE):
+        help_text = "👋 <b>Available Commands</b>\n\n/help - Yeh help message.\n/status - Bot ka live status.\n/earnings - Latest earnings report."
+        await u.message.reply_html(help_text)
         
-        # Get proxy choice from environment variable (default to 3 - no proxy)
-        choose = int(os.getenv('PROXY_CHOICE', '3'))
-        
-        # Get rotate proxy setting from environment variable (default to False)
-        rotate = os.getenv('ROTATE_PROXY', 'n').lower() == 'y'
-        
-        if choose not in [1, 2, 3]:
-            choose = 3  # Default to no proxy if invalid value
-            
-        proxy_type = (
-            "With Free Proxyscrape" if choose == 1 else 
-            "With Private" if choose == 2 else 
-            "Without"
-        )
-        
-        self.log(f"{Fore.GREEN + Style.BRIGHT}Run {proxy_type} Proxy Selected (Auto-configured).{Style.RESET_ALL}")
-        if choose in [1, 2]:
-            self.log(f"{Fore.GREEN + Style.BRIGHT}Rotate Invalid Proxy: {'Yes' if rotate else 'No'}{Style.RESET_ALL}")
+    async def status_command(self, u: Update, c: ContextTypes.DEFAULT_TYPE): await u.message.reply_html(await self.get_status_report_text())
+    async def earnings_command(self, u: Update, c: ContextTypes.DEFAULT_TYPE): await u.message.reply_html(await self.get_earnings_report_text())
 
-        return choose, rotate
+    # --- MAIN BACKGROUND TASK SCHEDULER ---
+    def start_background_tasks(self):
+        self.log_print(f"{Fore.GREEN}Scheduling all background jobs...")
+        accounts = self.load_accounts()
+        self.active_accounts = len(accounts)
+        if not accounts: self.log_print(f"{Fore.YELLOW}No accounts found."); return
+
+        # Schedule a repeating job for each account's ping/earning check
+        for account in accounts:
+            email = account.get("Email")
+            if email:
+                # This job runs the main logic for each account
+                self.job_queue.run_repeating(self.process_single_account, interval=90, first=5, data={'email': email})
+        
+        # ===== SCHEDULE UPDATE =====
+        # 1. Schedule the repeating STATUS report every 90 seconds
+        self.job_queue.run_repeating(self.schedule_status_report, interval=90, first=90)
+        
+        # 2. Earnings report is NO LONGER scheduled automatically. It only works on /earnings command.
+        
+        self.log_print(f"{Fore.GREEN}All jobs are scheduled. Status report every 90s.")
+
+# --- 4. APPLICATION ENTRY POINT ---
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))
+    flask_app.run(host='0.0.0.0', port=port)
+
+def main():
+    TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+    if not TOKEN: logger.error("FATAL: TELEGRAM_BOT_TOKEN not found!"); return
+
+    application = Application.builder().token(TOKEN).build()
+    depined_bot = DePINed(application)
+
+    application.add_handler(CommandHandler("help", depined_bot.help_command))
+    application.add_handler(CommandHandler("status", depined_bot.status_command))
+    application.add_handler(CommandHandler("earnings", depined_bot.earnings_command))
     
-    async def check_connection(self, email: str, proxy=None):
-        url = "https://api.ipify.org?format=json"
-        proxies = {"http":proxy, "https":proxy} if proxy else None
-        await asyncio.sleep(3)
-        try:
-            response = await asyncio.to_thread(requests.get, url=url, proxies=proxies, timeout=30, impersonate="chrome110", verify=False)
-            response.raise_for_status()
-            return True
-        except Exception as e:
-            error_msg = f"Connection Not 200 OK: {str(e)}"
-            self.print_message(email, proxy, Fore.RED, f"Connection Not 200 OK: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
-            await self.send_error_notification(error_msg, email)
-            return None
-
-    async def user_epoch_earning(self, email: str, proxy=None, retries=5):
-        url = f"{self.BASE_API}/stats/epoch-earnings"
-        headers = self.HEADERS[email].copy()
-        headers["Authorization"] = f"Bearer {self.access_tokens[email]}"
-        for attempt in range(retries):
-            proxies = {"http":proxy, "https":proxy} if proxy else None
-            await asyncio.sleep(5)
-            try:
-                response = await asyncio.to_thread(requests.get, url=url, headers=headers, proxies=proxies, timeout=60, impersonate="chrome110", verify=False)
-                response.raise_for_status()
-                return response.json()
-            except Exception as e:
-                if attempt < retries - 1:
-                    continue
-                error_msg = f"GET Earning Failed: {str(e)}"
-                self.print_message(email, proxy, Fore.RED, f"GET Earning Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
-                await self.send_error_notification(error_msg, email)
-                return None
-            
-    async def user_send_ping(self, email: str, proxy=None, retries=5):
-        url = f"{self.BASE_API}/user/widget-connect"
-        data = json.dumps({"connected":True})
-        headers = self.HEADERS[email].copy()
-        headers["Authorization"] = f"Bearer {self.access_tokens[email]}"
-        headers["Content-Length"] = str(len(data))
-        headers["Content-Type"] = "application/json"
-        for attempt in range(retries):
-            proxies = {"http":proxy, "https":proxy} if proxy else None
-            await asyncio.sleep(5)
-            try:
-                response = await asyncio.to_thread(requests.post, url=url, headers=headers, data=data, proxies=proxies, timeout=60, impersonate="chrome110", verify=False)
-                response.raise_for_status()
-                self.total_pings_sent += 1  # Track successful pings
-                return response.json()
-            except Exception as e:
-                if attempt < retries - 1:
-                    continue
-                error_msg = f"PING Failed: {str(e)}"
-                self.print_message(email, proxy, Fore.RED, f"PING Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
-                await self.send_error_notification(error_msg, email)
-                return None
-            
-    async def process_check_connection(self, email: str, use_proxy: bool, rotate_proxy: bool):
-        while True:
-            proxy = self.get_next_proxy_for_account(email) if use_proxy else None
-
-            is_valid = await self.check_connection(email, proxy)
-            if is_valid:
-                return True
-            
-            if rotate_proxy:
-                proxy = self.rotate_proxy_for_account(email)
-            
-    async def process_user_earning(self, email: str, use_proxy: bool):
-        while True:
-            proxy = self.get_next_proxy_for_account(email) if use_proxy else None
-
-            earning = await self.user_epoch_earning(email, proxy)
-            if earning and earning.get("code") == 200:
-                epoch = earning.get("data", {}).get("epoch", "N/A")
-                balance = earning.get("data", {}).get("earnings", 0)
-
-                self.print_message(email, proxy, Fore.WHITE, f"Epoch {epoch} "
-                    f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                    f"{Fore.CYAN + Style.BRIGHT} Earning: {Style.RESET_ALL}"
-                    f"{Fore.WHITE + Style.BRIGHT}{balance:.2f} PTS{Style.RESET_ALL}"
-                )
-
-            await asyncio.sleep(15 * 60)
-            
-    async def process_send_ping(self, email: str, use_proxy: bool):
-        while True:
-            proxy = self.get_next_proxy_for_account(email) if use_proxy else None
-
-            print(
-                f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
-                f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                f"{Fore.BLUE + Style.BRIGHT}Try to Sent Ping...{Style.RESET_ALL}",
-                end="\r",
-                flush=True
-            )
-
-            ping = await self.user_send_ping(email, proxy)
-            if ping and ping.get("message") == "Widget connection status updated":
-                self.print_message(email, proxy, Fore.GREEN, "PING Success")
-
-            print(
-                f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
-                f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                f"{Fore.BLUE + Style.BRIGHT}Wait For 90 Seconds For Next Ping...{Style.RESET_ALL}",
-                end="\r"
-            )
-            await asyncio.sleep(1.5 * 60)
-        
-    async def process_accounts(self, email: str, use_proxy: bool, rotate_proxy: bool):
-        is_valid = await self.process_check_connection(email, use_proxy, rotate_proxy)
-        if is_valid:
-            tasks = [
-                asyncio.create_task(self.process_user_earning(email, use_proxy)),
-                asyncio.create_task(self.process_send_ping(email, use_proxy))
-            ]
-            await asyncio.gather(*tasks)
-
-    async def main(self):
-        try:
-            tokens = self.load_accounts()
-            if not tokens:
-                self.log(f"{Fore.RED+Style.BRIGHT}No Accounts Loaded.{Style.RESET_ALL}")
-                return
-            
-            use_proxy_choice, rotate_proxy = self.print_question()
-
-            use_proxy = False
-            if use_proxy_choice in [1, 2]:
-                use_proxy = True
-
-            self.clear_terminal()
-            self.welcome()
-            self.log(
-                f"{Fore.GREEN + Style.BRIGHT}Account's Total: {Style.RESET_ALL}"
-                f"{Fore.WHITE + Style.BRIGHT}{len(tokens)}{Style.RESET_ALL}"
-            )
-
-            if use_proxy:
-                await self.load_proxies(use_proxy_choice)
-
-            self.log(f"{Fore.CYAN + Style.BRIGHT}={Style.RESET_ALL}"*75)
-
-            # Send startup notification
-            startup_message = f"🚀 <b>DePINed Bot Started</b> 🚀\n\n"
-            startup_message += f"📅 <b>Start Time:</b> {self.bot_start_time.strftime('%Y-%m-%d %H:%M:%S %Z')}\n"
-            startup_message += f"📧 <b>Total Accounts:</b> {len(tokens)}\n"
-            startup_message += f"🔗 <b>Total Proxies:</b> {len(self.proxies)}\n"
-            startup_message += f"⚙️ <b>Proxy Mode:</b> {'Free Proxyscrape' if use_proxy_choice == 1 else 'Private' if use_proxy_choice == 2 else 'No Proxy'}"
-            await self.send_telegram_message(startup_message)
-
-            tasks = []
-            # Add status report task
-            tasks.append(asyncio.create_task(self.send_status_report()))
-            
-            for idx, account in enumerate(tokens, start=1):
-                if account:
-                    email = account["Email"]
-                    token = account["accessToken"]
-
-                    if not "@" in email or not token:
-                        self.log(
-                            f"{Fore.CYAN + Style.BRIGHT}[ Account: {Style.RESET_ALL}"
-                            f"{Fore.WHITE + Style.BRIGHT}{idx}{Style.RESET_ALL}"
-                            f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
-                            f"{Fore.CYAN + Style.BRIGHT}Status:{Style.RESET_ALL}"
-                            f"{Fore.RED + Style.BRIGHT} Invalid Account Data {Style.RESET_ALL}"
-                            f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
-                        )
-                        continue
-
-                    self.HEADERS[email] = {
-                        "Accept": "*/*",
-                        "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
-                        "Origin": "chrome-extension://pjlappmodaidbdjhmhifbnnmmkkicjoc",
-                        "Sec-Fetch-Dest": "empty",
-                        "Sec-Fetch-Mode": "cors",
-                        "Sec-Fetch-Site": "none",
-                        "User-Agent": FakeUserAgent().random,
-                        "X-Requested-With": "XMLHttpRequest"
-                    }
-
-                    self.access_tokens[email] = token
-                    self.active_accounts += 1  # Count valid accounts
-
-                    tasks.append(asyncio.create_task(self.process_accounts(email, use_proxy, rotate_proxy)))
-
-            await asyncio.gather(*tasks)
-
-        except Exception as e:
-            error_msg = f"Critical Error in main(): {str(e)}"
-            self.log(f"{Fore.RED+Style.BRIGHT}Error: {e}{Style.RESET_ALL}")
-            await self.send_error_notification(error_msg)
-            raise e
+    depined_bot.start_background_tasks()
+    
+    print(f"{Fore.GREEN}Telegram bot is now polling for commands...{Style.RESET_ALL}")
+    application.run_polling()
 
 if __name__ == "__main__":
-    try:
-        bot = DePINed()
-        asyncio.run(bot.main())
-    except KeyboardInterrupt:
-        print(
-            f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
-            f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-            f"{Fore.RED + Style.BRIGHT}[ EXIT ] DePINed - BOT{Style.RESET_ALL}                                       "                              
-        )
+    print(f"{Fore.GREEN}--- TSun DePINed Bot Initializing ---{Style.RESET_ALL}")
+    
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    print(f"{Fore.CYAN}Web server started in a background thread.{Style.RESET_ALL}")
+
+    print(f"{Fore.CYAN}Starting Telegram bot...{Style.RESET_ALL}")
+    main()

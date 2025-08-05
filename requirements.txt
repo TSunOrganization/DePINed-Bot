@@ -3,3 +3,6 @@ fake-useragent==1.5.1
 colorama==0.4.6
 pytz==2024.1
 requests==2.32.4
+python-telegram-bot==21.0.1
+python-dotenv==1.0.1
+Flask==3.0.3

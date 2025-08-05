@@ -1,16 +1,25 @@
 services:
-  - type: worker
-    name: TSun-DePINed-Bot
+  - type: web
+    name: tsun-depined-bot
     env: python
     region: singapore
-    # The 'plan' is now determined by your account's subscription
+    plan: free
     buildCommand: "pip install -r requirements.txt"
     startCommand: "python bot.py"
-    autoDeploy: true
+    healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.4
+      - key: RENDER_EXTERNAL_URL # <-- YEH LINE ADD KAREIN
+        fromService:
+          type: web
+          name: tsun-depined-bot
+          property: url
+      - key: TELEGRAM_BOT_TOKEN
+        fromSecret: true
+      - key: TELEGRAM_CHAT_IDS
+        fromSecret: true
       - key: PROXY_CHOICE
-        value: "2"  # 1=Free Proxyscrape, 2=Private, 3=No Proxy
+        value: "2"
       - key: ROTATE_PROXY
-        value: "y"  # y=Yes, n=No
+        value: "y"
